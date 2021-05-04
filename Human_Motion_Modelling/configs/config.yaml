@@ -1,0 +1,110 @@
+
+h5_file: 'AMASS_3D_joints.h5'         # Change to your directory
+data_root: 'data'
+evaluate_view: 'data/evaluation_view.npy'
+model_pretrain: 'checkpoints/D_Denoise/model_epoch399.pth'
+netD_pretrain: ''
+optimizer: ''
+
+##############################
+#    Optimizer parameters    # 
+##############################
+nr_epochs: 1000
+lr_policy: 'step'                  # learning rate scheduler [multistep|constant|step]
+beta1: 0.5                       # Adam hyperparameter
+beta2: 0.999                     # Adam hyperparameter
+gamma: 0.5                       # Learning Rate Decay
+weight_decay: 0.0005             # weight decay
+step_size: 100                   # epochs to decay the learning rate by gamma
+lr: 0.0005                        # initial model learning rate
+lr_d: 0.0008
+warmup: 5                        # initial discriminator learning rate
+
+##################################
+#    Evaluation parameters    # 
+##################################
+
+eval_step: 5
+save_step: 50
+evaluate_noise: True
+
+###################################
+#    Dataset motion setting    # 
+###################################
+train_split: ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'DFaust_67']
+              #'BMLhandball', 'BMLmovi', 'EKUT', 'TCD_handMocap', 'BioMotionLab_NTroje', 'ACCAD']
+#train_split: [ 'Transitions_mocap', 'SSM_synced']
+test_split: ['Transitions_mocap', 'SSM_synced', 'HumanEva', 'MPI_HDM05', 'SFU', 'MPI_mosh']
+#test_split: ['Transitions_mocap', 'SSM_synced', 'SFU']
+#test_split: ['ACCAD', 'DFaust_67']
+
+return_type : 'network'
+
+
+noise_weight: 0.1
+noise_rate: 5
+joint_drop_rate : 20
+flip_rate: 5
+num_drop_joint: 4
+
+rotation_aug: True
+rotation_axes: [0.2, 0, 1]
+
+projection_noise: True
+viewpoints: 'single'
+camera_project: 'perspective'
+focal: 4.0
+depth: 4.0
+frame_boarder: 10
+
+max_seq_length: 321   # Should be 60 * N + 1
+train_sample_rate: 8
+train_sample_size : 50
+
+test_sample_rate: 16
+
+
+###################################
+#    Model motion setting    # 
+###################################
+
+model: 'transformer'
+
+
+transformer:
+  input_joints: 38
+  hidden_dim: 128
+  dropout: 0.1
+  nheads: 8
+  dim_feedforward: 256
+  enc_layers: 6
+  dec_layers: 6
+  activation: 'leaky_relu'
+  pre_norm: True
+  intermediate: False
+  two_stage: True
+  
+pos_encode:
+  hidden_dim: 128
+  position_embedding: 'v2'
+
+discriminator:
+  channels: [1, 32, 64, 128, 256, 256]
+  acti: 'relu'
+  init: 'normal'
+  norm: 'none'
+  use_patch_gan: True
+  use_sigmoid: False
+
+
+###################################
+#    Model motion setting    # 
+###################################
+use_lsgan: true
+gan_smooth: true
+
+gan_w : 1
+w_codition: 2
+w_2d: 5.0
+
+feat_w: 10.0

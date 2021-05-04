@@ -9,8 +9,8 @@ from human_body_prior.body_model.body_model import BodyModel
 
 comp_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-bm_path = './smplh/male/model.npz'
-dmpl_path = './dmpls/male/model.npz'
+bm_path = 'body_models/smplh/male/model.npz'
+dmpl_path = 'body_models/dmpls/male/model.npz'
 
 num_betas = 10 # number of body parameters
 num_dmpls = 8 # number of DMPL parameters
@@ -33,7 +33,7 @@ amass_splits = {
 amass_splits['train'] = list(set(amass_splits['train']).difference(set(amass_splits['test'] + amass_splits['vald'])))
 
 
-outfile = h5py.File('AMASS_motion_v2.h5', 'w')
+outfile = h5py.File('AMASS_3D_joints.h5', 'w')
 
 
 for split_name, datasets in amass_splits.items():
