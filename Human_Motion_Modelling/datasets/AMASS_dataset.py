@@ -5,7 +5,7 @@ import h5py
 import random
 import os
 from tqdm import tqdm
-from utils.utils import openpose2motion, motion2openpose
+from utils.visualize import openpose2motion, motion2openpose
 
 class AMASSDataset(BaseDataset):
 
@@ -121,20 +121,13 @@ class AMASSDataset(BaseDataset):
 
             input = input * ~encoder_mask.reshape(1,1,-1).astype(bool)
 
-#            interp_data, interp_mask = self._interpolate_frames(data_2d, mask)
-#            long_src_mask, long_tar_mask = self.generate_training_mask(interp_mask)
-
             return{
                 'data': torch.from_numpy(data).float().reshape(-1,data.shape[-1]),
                 'input': torch.from_numpy(input).float().reshape(-1,input.shape[-1]),
                 'interp': torch.from_numpy(interp).float().reshape(-1,interp.shape[-1]),
                 'src_mask':  torch.from_numpy(encoder_mask).bool(),
                 'tar_mask': torch.from_numpy(decoder_mask).bool(),
-                'mask': torch.from_numpy(mask).bool(),
-
-                #'long_data': torch.from_numpy(self._normalize_to_network(interp_data)).float(),
-                #'long_src_mask': torch.from_numpy(long_src_mask).bool(),
-                #'long_tar_mask': torch.from_numpy(long_tar_mask).bool(),
+                'mask': torch.from_numpy(mask).bool()
             }
         elif self.return_type == '3D':
 
@@ -149,9 +142,6 @@ class AMASSDataset(BaseDataset):
             encoder_mask, decoder_mask = self.generate_training_mask(mask, sample_rate = self.rate)
             input = self._normalize_to_network(data_3d.copy() * ~encoder_mask.reshape(1,1,-1).astype(bool))
 
-#            interp_data, interp_mask = self._interpolate_frames(data_2d, mask)
-#            long_src_mask, long_tar_mask = self.generate_training_mask(interp_mask)
-
             return{
                 'data': torch.from_numpy(data).float(),
                 'input': torch.from_numpy(input).float(),
@@ -159,9 +149,6 @@ class AMASSDataset(BaseDataset):
                 'src_mask':  torch.from_numpy(encoder_mask).bool(),
                 'tar_mask': torch.from_numpy(decoder_mask).bool(),
                 'mask': torch.from_numpy(mask).bool(),
-                #'long_data': torch.from_numpy(self._normalize_to_network(interp_data)).float(),
-                #'long_src_mask': torch.from_numpy(long_src_mask).bool(),
-                #'long_tar_mask': torch.from_numpy(long_tar_mask).bool(),
             }
         else:
             raise NotImplementedError("Unknown data return type")

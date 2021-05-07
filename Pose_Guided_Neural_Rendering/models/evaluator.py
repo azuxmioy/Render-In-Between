@@ -16,7 +16,6 @@ from torch.utils.data import DataLoader
 from itertools import combinations
 from piq import ssim, psnr
 
-from visualize.util import motion2gif
 from utils.utils import tensor2images
 from PIL import Image
 import albumentations as A
@@ -405,8 +404,3 @@ class Evaluator(object):
 
             if gen_vid:
                 self.make_video(results, os.path.join(save_dir, '{}.mp4'.format(subfolder) ), fps=30)
-
-
-        model.eval()
-
-            #Geting low fps frames

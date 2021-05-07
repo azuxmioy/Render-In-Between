@@ -1,5 +1,4 @@
 import sys, os
-import torch
 import h5py
 import numpy as np
 import json
@@ -180,7 +179,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process image folder to H5 file')
 
-    parser.add_argument("-i", "--image_path", default='./example', type=str, help="Path of the input image folder")
+    parser.add_argument("-i", "--image_path", default='../example', type=str, help="Path of the input image folder")
 
     main(parser.parse_args())
 

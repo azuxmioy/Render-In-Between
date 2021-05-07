@@ -1,5 +1,14 @@
 .DS_Store
 **/.DS_Store
+**/HumanSlomo/
+**/videos/
+**/data/
+**/body_models/
+example.zip
+example/
+
+**.mp4
+**.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -17,7 +26,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/
 lib64/
 parts/
 sdist/

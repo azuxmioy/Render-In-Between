@@ -108,8 +108,7 @@ class Transformer(nn.Module):
 
         output = self.decode(mem, src_mask, src_pos, trans_tgt, tgt_mask, tgt_pos)
         joints = self.joints_embed(output) + center
-        #joints = self.joints_embed(output)
-        #joints = center
+
         return joints, reco
 
     def encode(self, src, src_mask, pos_embed):
@@ -133,27 +132,6 @@ class Transformer(nn.Module):
                          memory_key_padding_mask=memory_mask,
                          pos=memory_pos, query_pos=tgt_pos)
         return hs
-
-
-    def decode_autoregressive(self, memory, memory_mask, memory_pos, tgt, tgt_mask, tgt_pos):
-
-        all_outputs = torch.zeros_like(tgt).to(self.device)
-        all_outputs [0, :, :] = tgt [0, :, :].clone()
-        for i in range(tgt.shape[0]-1): 
-            decoder_input = all_outputs[:i+1, :, :]
-            tgt_att_mask = self._generate_square_subsequent_mask(i+1).to(self.device) 
-    
-            decoder_output = self.decoder( decoder_input, memory, 
-                                          tgt_mask=tgt_att_mask,
-                                          tgt_key_padding_mask=memory_mask[:,:i+1],
-                                          memory_key_padding_mask=memory_mask,
-                                          pos=memory_pos, query_pos=tgt_pos[:i+1, :, :])
-
-            mask = tgt_mask.transpose(1, 0)[i+1].unsqueeze(1)
-            not_mask = ~tgt_mask.transpose(1, 0)[i+1].unsqueeze(1)
-            all_outputs[i+1, :, :] = decoder_output[-1].clone().detach() * mask + tgt[i+1, :, :].clone().detach() * not_mask
-
-        return all_outputs
 
 class TransformerEncoder(nn.Module):
 

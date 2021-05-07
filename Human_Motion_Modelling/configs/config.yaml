@@ -1,9 +1,8 @@
 
-h5_file: 'AMASS_3D_joints.h5'         # Change to your directory
+h5_file: 'AMASS/AMASS_3D_joints.h5'               # Change to your directory
 data_root: 'data'
 evaluate_view: 'data/evaluation_view.npy'
 model_pretrain: 'checkpoints/D_Denoise/model_epoch399.pth'
-netD_pretrain: ''
 optimizer: ''
 
 ##############################
@@ -11,13 +10,12 @@ optimizer: ''
 ##############################
 nr_epochs: 1000
 lr_policy: 'step'                  # learning rate scheduler [multistep|constant|step]
-beta1: 0.5                       # Adam hyperparameter
+beta1: 0.0                       # Adam hyperparameter
 beta2: 0.999                     # Adam hyperparameter
 gamma: 0.5                       # Learning Rate Decay
 weight_decay: 0.0005             # weight decay
 step_size: 100                   # epochs to decay the learning rate by gamma
 lr: 0.0005                        # initial model learning rate
-lr_d: 0.0008
 warmup: 5                        # initial discriminator learning rate
 
 ##################################
@@ -31,12 +29,10 @@ evaluate_noise: True
 ###################################
 #    Dataset motion setting    # 
 ###################################
-train_split: ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'DFaust_67']
-              #'BMLhandball', 'BMLmovi', 'EKUT', 'TCD_handMocap', 'BioMotionLab_NTroje', 'ACCAD']
-#train_split: [ 'Transitions_mocap', 'SSM_synced']
+train_split: ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'DFaust_67'
+              'BMLhandball', 'BMLmovi', 'EKUT', 'TCD_handMocap', 'BioMotionLab_NTroje', 'ACCAD']
+
 test_split: ['Transitions_mocap', 'SSM_synced', 'HumanEva', 'MPI_HDM05', 'SFU', 'MPI_mosh']
-#test_split: ['Transitions_mocap', 'SSM_synced', 'SFU']
-#test_split: ['ACCAD', 'DFaust_67']
 
 return_type : 'network'
 
@@ -98,10 +94,8 @@ discriminator:
 
 
 ###################################
-#    Model motion setting    # 
+#    Loss weight setting    # 
 ###################################
-use_lsgan: true
-gan_smooth: true
 
 gan_w : 1
 w_codition: 2

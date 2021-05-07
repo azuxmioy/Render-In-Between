@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import random
 
-from models.generator_v4 import Generator
+from models.generator import Generator
 from models.discriminator import Discriminator
 
 from models.losses import FeatureMatchingLoss, PerceptualLoss, GANLoss, MaskRegulationLoss, MaskedL1loss

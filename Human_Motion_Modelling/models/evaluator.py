@@ -9,8 +9,7 @@ from tqdm import tqdm
 from datasets import find_dataset_using_name
 from torch.utils.data import DataLoader
 from itertools import combinations
-from visualize.util import motion2gif
-from utils.utils import motion2openpose
+from utils.visualize import motion2gif, openpose2motion, motion2openpose
 
 class Evaluator(object):
     def __init__(self, cfg):
@@ -34,8 +33,6 @@ class Evaluator(object):
             print('   Evaluation random view   ')
             print(self.rand_view)
             print('############################')
-
-
 
         self.scale_unit = 128
         self.offset = 256
@@ -109,9 +106,6 @@ class Evaluator(object):
                 J, D, T = gt_global.shape
                 cnt += J * D * T
                 cnt2 +=1
-                #root_idx = 8
-                # use interp body center
-                #infer_global = infer_global + ( interp_global[root_idx : root_idx+1, :, :] - infer_global[root_idx : root_idx+1, :, :] )
 
                 mse_global += np.sum((gt_global - infer_global) ** 2)
                 mae_global += np.sum(np.abs(gt_global - infer_global))
@@ -120,14 +114,6 @@ class Evaluator(object):
                 mse_interp += np.sum((gt_global - interp_global) ** 2)
                 mae_interp += np.sum(np.abs(gt_global - interp_global))
                 mma_interp += np.amax(np.abs(gt_global - interp_global))
-
-                '''
-                gt_local = self._relocate(gt, localize=True)
-                infer_local = self._relocate(infer, localize=True)
-
-                mse_local += np.sum((gt_local - infer_local) ** 2)
-                mae_local += np.sum(np.abs(gt_local - infer_local))
-                '''
 
         result = {}
         
@@ -203,7 +189,7 @@ class Evaluator(object):
 
         # Target motion
 
-        print('visualize done!')
+        print('Inference done!')
 
     
     def _denormalize(self, data):
@@ -220,15 +206,6 @@ class Evaluator(object):
             D = 2
             motion_inv = np.r_[data[:8], np.zeros((1, 2, data.shape[-1])), data[8:-1]]
 
-        # restore centre position
-        '''
-        centers = np.zeros_like(velocity)
-        sum = 0
-        for i in range(data.shape[-1]):
-            sum += velocity[:, i]
-            centers[:, i] = sum
-        centers += start.reshape([D, 1])
-        '''
         centers = velocity
         
         return motion_inv + centers.reshape((1, D, -1))

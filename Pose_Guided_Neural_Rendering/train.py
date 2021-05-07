@@ -4,21 +4,19 @@ import numpy as np
 import torch
 import random
 import argparse
-import copy
 import shutil
-import matplotlib.pyplot as plt
 
 from datasets import find_dataset_using_name
-from utils.utils import *
 
-from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
-from models.trainer_3 import Motion_recovery_auto
-from models.evaluator_3 import Evaluator
-
 from torch.utils.tensorboard import SummaryWriter
-from visualize.record_summary import record_image_summaries, record_scalar_summaries
-from visualize.util import print_losses
+
+from models.trainer import Motion_recovery_auto
+from models.evaluator import Evaluator
+
+from utils.record_summary import record_image_summaries, record_scalar_summaries
+from utils.visualize import print_losses
+from utils.utils import *
 
 
 def main(opts):
@@ -63,19 +61,6 @@ def main(opts):
     trainer = Motion_recovery_auto(config, opts.resume)
     evaluator = Evaluator(config)
 
-
-    if opts.resume:
-        #evaluator.set_model(trainer.net_G)
-        #evaluator.evaluate_from_dataset(trainer.net_G, epoch=999, use_gpu=True, gen_vid=True)
-        video_name = 'HSM_full'
-
-        train_dir = '/root/data/'+ video_name +'/test2/train_frames'
-        cain_dir = '/root/data/'+video_name+'/test2/DAIN_8'
-        pose_dir = '/root/data/'+video_name+'/test2/Predict_8'
-        save_dir = '/root/data/'+video_name+'/test2/prev_mask_pred8'
-        gt_dir = '/root/data/'+video_name+'/test2/frames'
-        evaluator.evaluate_from_folder(trainer.net_G, train_dir, cain_dir, pose_dir, save_dir, gt_dir=None, gen_vid=False)
-
     # how many iterations per epoch
     epoch_iteration = len(loader.dataset) // opts.batch_size 
 
@@ -91,13 +76,14 @@ def main(opts):
 
             trainer.set_input(data)
             trainer.optimize_parameters()
-            '''
+
+            
             # Dump training stats in log file / display in console
-            if (total_steps + 1) % config.print_freq == 0:
-                errors = trainer.get_current_losses()
-                t = (time.time() - iter_start_time) / opts.batch_size
-                print_losses(epoch+1, i+1, errors, t, os.path.join(output_directory, 'history.txt'))
-            '''
+            #if (total_steps + 1) % config.print_freq == 0:
+            #    errors = trainer.get_current_losses()
+            #    t = (time.time() - iter_start_time) / opts.batch_size
+            #    print_losses(epoch+1, i+1, errors, t, os.path.join(output_directory, 'history.txt'))
+            
             # Record scalars to tensorboard
             if (total_steps + 1) % config.display_freq == 0:
                 losses = trainer.get_current_losses()
@@ -132,7 +118,6 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--workers', type=int, default=4)
 
-    parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
     parser.add_argument('--seed', type=int, default=123)
 
     main(parser.parse_args())
