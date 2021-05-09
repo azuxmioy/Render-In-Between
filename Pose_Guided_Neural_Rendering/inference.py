@@ -37,7 +37,7 @@ def main(opts):
     trainer = Motion_recovery_auto(config, opts.resume)
     evaluator = Evaluator(config)
 
-    train_dir = os.path.join(opts.input_dir, 'input_frames')
+    train_dir = os.path.join(opts.input_dir, 'inputs')
     dain_dir = os.path.join(opts.input_dir, 'DAIN')
     pose_dir =  os.path.join(opts.input_dir, 'Predict_motion')
     save_dir = os.path.join(opts.save_dir, 'Generated_frames')
@@ -48,9 +48,9 @@ def main(opts):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='play our Dance Transformer')
 
-    parser.add_argument('--config', type=str, default='configs/auto_2.yaml', help='Path to the config file.')
+    parser.add_argument('--config', type=str, default='configs/HSM.yaml', help='Path to the config file.')
     parser.add_argument('--save-dir', type=str, default='../example', help="outputs path")
-    parser.add_argument('--input-dir', type=str, help="input low FPS frames and pose input")
+    parser.add_argument('--input-dir', type=str,  required=True ,help="input low FPS frames and pose input")
 
     parser.add_argument('--seed', type=int, default=123)
 

@@ -45,7 +45,6 @@ def create_zip_code_files(output_file='code_copy.zip'):
     archive_files += [os.path.join('datasets',f) for f in os.listdir('datasets') if f.endswith('py')]
     archive_files += [os.path.join('models',f) for f in os.listdir('models') if f.endswith('py')]
     archive_files += [os.path.join('utils',f) for f in os.listdir('utils') if f.endswith('py')]
-    archive_files += [os.path.join('visualize',f) for f in os.listdir('visualize') if f.endswith('py')]
     archive_files += [f for f in os.listdir('.') if f.endswith('py')]
     patoolib.create_archive(output_file, archive_files)
 

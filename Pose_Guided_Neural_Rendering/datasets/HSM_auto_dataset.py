@@ -113,17 +113,21 @@ class HSMAutoDataset(BaseDataset):
         self.n_frames = {}
         self.samples = []
 
-        for vid_name in self.videl_list:
-            with h5py.File(self.root, "r") as f:
-                if self.phase == 'train':
-                    sample_list = list(f[vid_name]['train_fake'])
-                else:
-                    sample_list = list(f[vid_name]['gt_images'])
-                self.n_frames[vid_name] = len(sample_list)
-                tuple_list = [(vid_name, list(range(idx, idx+self.max_frames)), 'f') for idx in range(len(sample_list)+2-self.max_frames)]
-                #tuple_list += [(vid_name, list(range(idx, idx-self.max_frames, -1)), 'b') for idx in range(len(sample_list)+1, self.max_frames-1, -1)]
+        try: 
+            for vid_name in self.videl_list:
+                with h5py.File(self.root, "r") as f:
+                    if self.phase == 'train':
+                        sample_list = list(f[vid_name]['train_fake'])
+                    else:
+                        sample_list = list(f[vid_name]['gt_images'])
+                    self.n_frames[vid_name] = len(sample_list)
+                    tuple_list = [(vid_name, list(range(idx, idx+self.max_frames)), 'f') for idx in range(len(sample_list)+2-self.max_frames)]
+                    #tuple_list += [(vid_name, list(range(idx, idx-self.max_frames, -1)), 'b') for idx in range(len(sample_list)+1, self.max_frames-1, -1)]
 
-                self.samples.extend(tuple_list)
+                    self.samples.extend(tuple_list)
+
+        except: # do not read h5 file when inference only
+            pass
 
     def get_max_frames(self):
         return self.max_frames

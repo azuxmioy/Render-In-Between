@@ -13,9 +13,6 @@ from PIL import Image
 from collections import OrderedDict
 from scipy.ndimage import gaussian_filter1d
 
-SCALE = 1.0
-RATE = 8
-
 def print_evaluation(results_dict, epoch, dump_file=None, writer=None):
     print('evaluate in epoch:{:>3}'.format(epoch))
 
@@ -133,7 +130,6 @@ def openpose2motion(json_dir, scale=None, offset=None, max_frame=None, thres=0.0
         #offset = scale // 2
         offset = 256
 
-    print(offset)
     motion = (motion - offset) / scale
     motion [~valid, :] = 0.0
 
@@ -186,9 +182,9 @@ def motion2openpose(motion, conf, save_json_dir, scale=128.0, offset=256.0, samp
                   np.concatenate([ joints[18], confidence[18]], axis=None) [np.newaxis,:].repeat(21,axis=0).reshape(-1).tolist()
 
         save_path = os.path.join (save_json_dir, '{:06d}_keypoints.json'.format(i))
-        if i % (sample_rate/RATE) == 0:
-            with open(save_path, 'w') as fp:
-                json.dump(openpose_dict, fp)
+        
+        with open(save_path, 'w') as fp:
+            json.dump(openpose_dict, fp)
 
 
 

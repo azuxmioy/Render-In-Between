@@ -57,17 +57,22 @@ class AMASSDataset(BaseDataset):
             raise NotImplementedError("Unknown split type!")
 
         self.samples = []
-        for dataset_name in self.sub_datasets:
-            with h5py.File(self.root, "r") as f:
-                motion_lists = list(f[dataset_name])
 
-            tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
-            self.samples.extend(tuple_list)
+        try:
+            for dataset_name in self.sub_datasets:
+                with h5py.File(self.root, "r") as f:
+                    motion_lists = list(f[dataset_name])
 
+                tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
+                self.samples.extend(tuple_list)
+        except: # for inference only we don't need h5 files
+            pass
+        
         mean_path = os.path.join(cfg.data_root, 'mean_pose_'+ str(self.return_type) + '_' +str(self.viewpoints)
                             + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )
         std_path = os.path.join(cfg.data_root, 'std_pose_'+ str(self.return_type) + '_' + str(self.viewpoints)
-                            + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )       
+                            + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )
+
         try:
             self.mean_pose = np.load(mean_path).copy()
             self.std_pose = np.load(std_path).copy()

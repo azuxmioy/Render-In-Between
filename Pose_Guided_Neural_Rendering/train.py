@@ -111,7 +111,7 @@ def main(opts):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='play our Dance Transformer')
 
-    parser.add_argument('--config', type=str, default='configs/auto_2.yaml', help='Path to the config file.')
+    parser.add_argument('--config', type=str, default='configs/HSM.yaml', help='Path to the config file.')
     parser.add_argument('--save-root', type=str, default='./checkpoints/', help="outputs path")
     parser.add_argument('--name', type=str, default='pose', help="outputs path")
     parser.add_argument('--resume', action="store_true")
