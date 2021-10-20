@@ -1,17 +1,13 @@
-import torch
+"""
+This file contrains functions for visualization purpose
+"""
+
 import os
 import math
 import cv2
-import torchvision.utils as vutils
 import imageio
 import numpy as np
-import torch.nn.init as init
-from easydict import EasyDict as edict
-import csv
-import json
 from PIL import Image
-from collections import OrderedDict
-from scipy.ndimage import gaussian_filter1d
 
 def print_evaluation(results_dict, epoch, dump_file=None, writer=None):
     print('evaluate in epoch:{:>3}'.format(epoch))
@@ -29,164 +25,6 @@ def print_evaluation(results_dict, epoch, dump_file=None, writer=None):
         for key, value in results_dict.items():
             text += '{:10} : {:12.6%}\n'.format (key, value)
         writer.add_text('eval_{}'.format(epoch), text)
-
-def extract_valid_keypoints(pts, thres=0.0):
-
-    output = np.zeros((1, 3))
-    
-    valid = (pts[:, 2] > thres)
-    if valid.sum() > 5:
-        output =  np.mean( pts[valid, :], axis=0, keepdims=True)
-    return output
-
-def select_largest_bb(jointdicts, thres = 0.01):
-
-    target_idx = -1
-    target_height = -1
-
-    for i, joint_dict in enumerate(jointdicts):
-        np_joints = np.array(joint_dict['pose_keypoints_2d']).copy()
-        np_joints = np_joints.reshape((-1, 3))[:15, :]
-        x_cor = np_joints [:, 0]
-        y_cor = np_joints [:, 1]
-        confidence = np_joints [:, 2]
-        valid = (confidence > thres)
-        if valid.sum() < 3:
-            continue
-        width = np.amax(x_cor[np.where(valid)]) - np.amin(x_cor[np.where(valid)])
-        height = np.amax(y_cor[np.where(valid)]) - np.amin(y_cor[np.where(valid)])
-
-        area = width * height
-        if area > target_height:
-            target_height = area
-            target_idx = i
-
-    return target_idx
-
-def openpose2motion(json_dir, scale=None, offset=None, max_frame=None, thres=0.000):
-    json_files = sorted(os.listdir(json_dir))
-    #length = max_frame if max_frame is not None else len(json_files) // 8 * 8
-    length = max_frame if max_frame is not None else len(json_files)
-
-    json_files = json_files[:length]
-    json_files = [os.path.join(json_dir, x) for x in json_files]
-
-    motion = []
-    for path in json_files:
-        with open(path) as f:
-
-            jointDict = json.load(f)
-            if len(jointDict['people']) > 0:
-                idx = select_largest_bb(jointDict['people'])
-            else:
-                idx = -1
-
-            if idx != -1:
-                joint_indice = list(range(0,15) ) + [19, 22]
-                pts = np.array(jointDict['people'][idx]['pose_keypoints_2d']).reshape(-1, 3) [joint_indice]
-                l_pts = extract_valid_keypoints(np.array(jointDict['people'][idx]['hand_left_keypoints_2d']).reshape(-1, 3)) 
-                r_pts = extract_valid_keypoints(np.array(jointDict['people'][idx]['hand_right_keypoints_2d']).reshape(-1, 3)) 
-                joints = np.concatenate((pts, l_pts, r_pts), axis=0)
-
-                confidence = joints [:, 2].copy()
-                valid = (confidence > thres)
-                np_joints = np.zeros_like (joints)
-                np_joints[valid, :] = joints [valid, :]
-                np_joints[:, 2] = confidence
-
-                '''
-                if len(motion) > 1:
-                    np_joints[~valid, :2] = motion[-1][~valid, :2] + ( motion[-1][~valid, :2] - motion[-2][~valid, :2])
-                    np_joints[~valid, 2] = (motion[-1][~valid, 2] + motion[-2][~valid, 2]) /2
-                    #np_joints[~valid, :] = motion[-1][~valid, :] 
-                '''
-            else:
-                if len(motion) > 1:
-                    np_joints = motion[-1]
-                else: 
-                    np_joints = np.zeros((19, 3))
-                
-            motion.append(np_joints)
-    '''
-    for i in range(len(motion) - 1, 1, -1):
-
-        confidence = motion[i-1] [:, 2].copy()
-        valid = (confidence > thres)
-        motion[i - 2][~valid, :2] = motion[i - 1][~valid, :2] + ( motion[i - 1][~valid, :2] - motion[i][~valid, :2])
-        motion[i - 2][~valid, 2] = (motion[i-1][~valid, 2] + motion[i-2][~valid, 2]) /2
-        #motion[i-1] [~valid, :] = motion[i] [~valid, :] 
-    '''
-
-    motion = np.stack(motion, axis=0)
-    conf = motion[:, :, -1].copy()
-    valid = (conf > thres)
-
-    motion =  motion[:, :, :2]
-
-    if scale is None:
-        #scale = np.amax(motion)
-        scale = 512
-    if offset is None:
-        #offset = scale // 2
-        offset = 256
-
-    motion = (motion - offset) / scale
-    motion [~valid, :] = 0.0
-
-    return motion.transpose(1,2,0), conf[:,:,np.newaxis].transpose(1,2,0), (scale, offset)
-
-
-def motion2openpose(motion, conf, save_json_dir, scale=128.0, offset=256.0, sample_rate=8):
-
-    if not os.path.exists(save_json_dir):
-        print("Creating directory: {}".format(save_json_dir))
-        os.makedirs(save_json_dir)
-
-    seq_len = motion.shape[-1]
-
-    openpose_dict = {}
-    openpose_dict['version'] = 1.3
-    openpose_dict['people'] = []
-
-    person_dict = {}
-    person_dict['person_id'] = [-1]
-    person_dict['pose_keypoints_2d'] = []
-    person_dict['face_keypoints_2d'] = []
-    person_dict['hand_left_keypoints_2d'] = []
-    person_dict['hand_right_keypoints_2d'] = []
-    person_dict['pose_keypoints_3d'] = []
-    person_dict['face_keypoints_3d'] = []
-    person_dict['hand_left_keypoints_3d'] = []
-    person_dict['hand_right_keypoints_3d'] = []
-
-    openpose_dict['people'].append(person_dict)
-
-    for i in range(seq_len):
-
-        joints = motion[:, :, i].copy() * scale + offset
-        confidence = conf [:, :, i].copy()
-
-        output = np.concatenate([joints[:15], confidence[:15]],axis=1)
-        output = np.pad(output, ((0,10),(0,0)), 'constant', constant_values=0.0)
-
-        output[19, :] = np.concatenate([ joints[15], confidence[15]], axis=None) 
-        output[22, :] = np.concatenate([ joints[16], confidence[16]], axis=None) 
-
-        openpose_dict['people'][0]['pose_keypoints_2d'] = output.reshape(-1).tolist()
-
-
-        openpose_dict['people'][0]['hand_left_keypoints_2d'] = \
-                  np.concatenate([ joints[17], confidence[17]], axis=None) [np.newaxis,:].repeat(21,axis=0).reshape(-1).tolist()
-
-        openpose_dict['people'][0]['hand_right_keypoints_2d'] = \
-                  np.concatenate([ joints[18], confidence[18]], axis=None) [np.newaxis,:].repeat(21,axis=0).reshape(-1).tolist()
-
-        save_path = os.path.join (save_json_dir, '{:06d}_keypoints.json'.format(i))
-        
-        with open(save_path, 'w') as fp:
-            json.dump(openpose_dict, fp)
-
-
 
 def motion2gif(motion, h, w, save_path, transparency=False, motion_tgt=None, relocate=False, save_frame=False):
     nr_joints = motion.shape[0]
@@ -223,7 +61,7 @@ def motion2gif(motion, h, w, save_path, transparency=False, motion_tgt=None, rel
 
         images.append(img)
 
-    imageio.mimsave(save_path, images)
+    imageio.mimsave(save_path, images, fps=60)
 
 
 def joints2image(joints_position, colors, transparency=False, H=512, W=512, nr_joints=49, imtype=np.uint8):
@@ -249,7 +87,7 @@ def joints2image(joints_position, colors, transparency=False, H=512, W=512, nr_j
         neck = joints_position[1]
         head = joints_position[0]
 
-    elif nr_joints == 15 or nr_joints == 17: # basic joints(15) + (toe(2))
+    elif nr_joints == 15 or nr_joints == 17 or nr_joints == 19: # basic joints(15) + (toe(2))
         limbSeq = [[0, 1], [1, 2], [1, 5], [1, 8], [2, 3], [3, 4], [5, 6], 
                    [6, 7], [8, 9], [8, 12], [9, 10], [10, 11], [12, 13], [13, 14]]
                     # [0, 15], [0, 16] two eyes are not drawn
@@ -267,6 +105,11 @@ def joints2image(joints_position, colors, transparency=False, H=512, W=512, nr_j
             limbSeq  += [[14, 15], [11, 16] ]
             colors_joints += [L, R]
             colors_limbs  += [L, R]
+
+        if nr_joints == 19:
+            limbSeq  += [[14, 15], [11, 16], [7, 17], [4, 18] ]
+            colors_joints += [L, R, L, R]
+            colors_limbs  += [L, R, L, R]
 
         hips = joints_position[8]
         neck = joints_position[1]
@@ -300,12 +143,12 @@ def joints2image(joints_position, colors, transparency=False, H=512, W=512, nr_j
 
     torso_length = ((hips[1] - neck[1]) ** 2 + (hips[0] - neck[0]) ** 2) ** 0.5
 
-    head_radius = int(torso_length/4.5)
+    head_radius = 15
     end_effectors_radius = int(torso_length/15)
     end_effectors_radius = 7
-    joints_radius = 7
+    joints_radius = 4
 
-    cv2.circle(canvas, (int(head[0]),int(head[1])), 20, colors_joints[0], thickness=-1)
+    cv2.circle(canvas, (int(head[0]),int(head[1])), head_radius, colors_joints[0], thickness=-1)
 
     for i in range(0, len(colors_joints)):
         '''
@@ -317,7 +160,7 @@ def joints2image(joints_position, colors, transparency=False, H=512, W=512, nr_j
         '''
         radius = joints_radius
         cv2.circle(canvas, (int(joints_position[i][0]),int(joints_position[i][1])), radius, colors_joints[i], thickness=-1)
-        cv2.putText(canvas, "%d" %i, (int(joints_position[i][0]),int(joints_position[i][1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors_joints[i])
+        #cv2.putText(canvas, "%d" %i, (int(joints_position[i][0]),int(joints_position[i][1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors_joints[i])
         
     stickwidth = 2
 

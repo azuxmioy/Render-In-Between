@@ -3,61 +3,69 @@ h5_file: 'AMASS/AMASS_3D_joints.h5'               # Change to your directory
 data_root: 'data'
 evaluate_view: 'data/evaluation_view.npy'
 model_pretrain: 'checkpoints/D_Denoise/model_epoch399.pth'
+netD_pretrain: ''
 optimizer: ''
 
 ##############################
 #    Optimizer parameters    # 
 ##############################
 nr_epochs: 1000
-lr_policy: 'step'                  # learning rate scheduler [multistep|constant|step]
-beta1: 0.0                       # Adam hyperparameter
+lr_policy: 'step'                # learning rate scheduler [lambda|multistep|constant|step]
+beta1: 0.5                       # Adam hyperparameter
 beta2: 0.999                     # Adam hyperparameter
 gamma: 0.5                       # Learning Rate Decay
 weight_decay: 0.0005             # weight decay
 step_size: 100                   # epochs to decay the learning rate by gamma
-lr: 0.0005                        # initial model learning rate
+lr: 0.0001                        # initial model learning rate
 warmup: 5                        # initial discriminator learning rate
 
 ##################################
 #    Evaluation parameters    # 
 ##################################
 
-eval_step: 5
-save_step: 50
-evaluate_noise: True
+eval_step: 5                      #  # of epochs for evaluation
+save_step: 50                     #  # of epochs to save the model
+evaluate_noise: True              #  perturb input joints during test
+
+openpose_scale: 512               #  Mapping from image coordinate to SMPL coordinate
+openpose_offset: 256              #  Mapping from image coordinate to SMPL coordinate
 
 ###################################
-#    Dataset motion setting    # 
+#        Dataset  setting         # 
 ###################################
-train_split: ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'DFaust_67'
+
+# Modify your train/test splits here
+train_split: ['CMU', 'MPI_Limits', 'TotalCapture', 'Eyes_Japan_Dataset', 'KIT', 'DFaust_67',
               'BMLhandball', 'BMLmovi', 'EKUT', 'TCD_handMocap', 'BioMotionLab_NTroje', 'ACCAD']
 
 test_split: ['Transitions_mocap', 'SSM_synced', 'HumanEva', 'MPI_HDM05', 'SFU', 'MPI_mosh']
 
-return_type : 'network'
+return_type : 'network'         # 'render' for debug usage | 'network' return 2D joints | '3D' return 3D joints
 
+# Dataset training noise setting
+train_noise: True               #  perturb input joints during training
 
-noise_weight: 0.1
-noise_rate: 5
-joint_drop_rate : 20
-flip_rate: 5
-num_drop_joint: 4
+noise_weight: 0.5               #  if perturbed, how much noise to add to joints
+noise_rate: 15                  #  if perturbed, how many frames we add noise
+joint_drop_rate : 15            #  if perturbed, how many frames we randomly drop joints
+flip_rate: 8                    #  if perturbed, how many frames we randomly flip left and right
 
-rotation_aug: True
-rotation_axes: [0.2, 0, 1]
+# 2D camera projection setting
+rotation_aug: True              #  whether we random rotate the 3D joints for data augmentation
+rotation_axes: [0.2, 0, 1]      #  rotation range in [x, y, z] axis (range * 2pi)
 
-projection_noise: True
-viewpoints: 'single'
-camera_project: 'perspective'
-focal: 4.0
-depth: 4.0
-frame_boarder: 10
+camera_project: 'perspective'   # 'perspective' for pinehole camera model | 'orthogonal' for orthogonal projection (ignore depth)
+focal: 4.0                      # virtual perspective camera focal length
+depth: 4.0                      # virtual perspective camera distance
+projection_noise: True          # random perturb focal and depth or not
+frame_boarder: 10               # virtual image plane range (to avoid close points project to infinity)
 
-max_seq_length: 321   # Should be 60 * N + 1
-train_sample_rate: 8
-train_sample_size : 50
+# motion clips setting
+max_seq_length: 321             # Should be sample_rate * N + 1
+train_sample_rate: 8            # downsample rate, original frame rate is 60 FPS, sample rate=8 equals to 7.5 fps
+train_sample_size : 50          # how many intermedia frames per motion clip used for computing the loss during training
 
-test_sample_rate: 16
+test_sample_rate: 16            # downsample rate for test, the larger the more difficult
 
 
 ###################################
@@ -66,24 +74,27 @@ test_sample_rate: 16
 
 model: 'transformer'
 
-
+# Transformer Network Setting
 transformer:
-  input_joints: 38
-  hidden_dim: 128
+  input_joints: 38              # we use 19 body joints and it x,y coordinates for training
+  hidden_dim: 128               # 128-d joint embedding
   dropout: 0.1
-  nheads: 8
-  dim_feedforward: 256
+  nheads: 8                     # 8 head attention
+  dim_feedforward: 256          # 256-d hidden states
   enc_layers: 6
   dec_layers: 6
   activation: 'leaky_relu'
   pre_norm: True
   intermediate: False
   two_stage: True
-  
+
+# Positional Encoding Setting
 pos_encode:
   hidden_dim: 128
-  position_embedding: 'v2'
+  position_embedding: 'v2'      # 'v2' sine function | 'network' return 2D joints | '3D' return 3D joints
 
+# Use Experimental motion discriminator during training
+use_dis: False
 discriminator:
   channels: [1, 32, 64, 128, 256, 256]
   acti: 'relu'
@@ -97,8 +108,10 @@ discriminator:
 #    Loss weight setting    # 
 ###################################
 
-gan_w : 1
-w_codition: 2
-w_2d: 5.0
+w_codition: 2.0              # loss weight for denoising
+w_2d: 5.0                    # loss weight for overall joints loss
 
-feat_w: 10.0
+# experimental adversarial losses
+w_gan: 0.0
+use_lsgan: true
+gan_smooth: true

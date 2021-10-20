@@ -5,7 +5,7 @@ import h5py
 import random
 import os
 from tqdm import tqdm
-from utils.visualize import openpose2motion, motion2openpose
+from utils.utils import openpose2motion
 
 class AMASSDataset(BaseDataset):
 
@@ -18,61 +18,62 @@ class AMASSDataset(BaseDataset):
         print('     Preparing Dataset      ')
         print('############################')
 
-        self.phase = phase
-        self.return_type = return_type
+        self.phase = phase             # 'train' | 'test'
+        self.return_type = return_type # 'render' for debug usage | 'network' return 2D joints | '3D' return 3D joints
 
+
+        # Training settings
         self.train_sample_size = cfg.train_sample_size
         self.rate = cfg.train_sample_rate
         self.max_seq_length = cfg.max_seq_length
-        self.project = cfg.camera_project
-        self.viewpoints = cfg.viewpoints
-        self.projection_noise = cfg.projection_noise and phase == 'train'
 
+        self.train_noise = cfg.train_noise
+        self.noise_weight = cfg.noise_weight
+        self.noise_rate   = cfg.noise_rate
+        self.joint_drop_rate = cfg.joint_drop_rate
+        self.flip_rate = cfg.flip_rate
+
+        # 2D projection settings
+        self.rotation_aug = cfg.rotation_aug
+        self.rotation_axes = np.array(cfg.rotation_axes)
+
+        self.project = cfg.camera_project
+        self.projection_noise = cfg.projection_noise and phase == 'train'
         self.focal_len = cfg.focal
         self.cam_depth = cfg.depth
         self.frame_boarder = cfg.frame_boarder
 
+        # Rendering mode setting (for debug)
         self.scale_unit = 200
 
-        self.rotation_aug = cfg.rotation_aug
-        self.rotation_axes = np.array(cfg.rotation_axes)
-
-        self.noise_weight = cfg.noise_weight
-        self.noise_rate   = cfg.noise_rate
-
-        self.joint_drop_rate = cfg.joint_drop_rate
-        self.num_drop_joint = cfg.num_drop_joint
-        self.flip_rate = cfg.flip_rate
-
+        # test mode setting
         self.evaluate_noise = cfg.evaluate_noise
         self.eval_rate = cfg.test_sample_rate
+
+        self.openpose_scale= cfg.openpose_scale              
+        self.openpose_offset= cfg.openpose_offset 
 
         if phase == 'train':
             self.sub_datasets = cfg.train_split
         elif phase == 'test':
             self.sub_datasets = cfg.test_split
-        elif phase == 'valid':
-            self.sub_datasets = cfg.valid_split
         else: 
             raise NotImplementedError("Unknown split type!")
 
+        # initialize data sample path
         self.samples = []
+        for dataset_name in self.sub_datasets:
+            with h5py.File(self.root, "r") as f:
+                motion_lists = list(f[dataset_name])
 
-        try:
-            for dataset_name in self.sub_datasets:
-                with h5py.File(self.root, "r") as f:
-                    motion_lists = list(f[dataset_name])
+            tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
+            self.samples.extend(tuple_list)
 
-                tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
-                self.samples.extend(tuple_list)
-        except: # for inference only we don't need h5 files
-            pass
-        
-        mean_path = os.path.join(cfg.data_root, 'mean_pose_'+ str(self.return_type) + '_' +str(self.viewpoints)
+        # precompute mean and variance for normalization
+        mean_path = os.path.join(cfg.data_root, 'mean_pose_'+ str(self.return_type)
                             + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )
-        std_path = os.path.join(cfg.data_root, 'std_pose_'+ str(self.return_type) + '_' + str(self.viewpoints)
-                            + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )
-
+        std_path = os.path.join(cfg.data_root, 'std_pose_'+ str(self.return_type)
+                            + '_' + str(self.project) + '_{:.0f}_{:.0f}'.format(self.focal_len, self.cam_depth) + '.npy' )       
         try:
             self.mean_pose = np.load(mean_path).copy()
             self.std_pose = np.load(std_path).copy()
@@ -92,14 +93,20 @@ class AMASSDataset(BaseDataset):
 
     def __getitem__(self, index):
         dataset_key, motion_key = self.samples[index]
+        
+        # Get motion clips from h5 dataset file
         motion = self._get_h5_motion (dataset_key, motion_key)
 
+        # Crop the full clips into fixed length traning motion
         crop_motion, mask, start = self._random_temproal_crop(motion)
 
+        # generate viewpoint augmentation
         view = np.random.uniform(-self.rotation_axes, self.rotation_axes) * np.pi if self.rotation_aug else None
 
+        # Rotate 3D joints based on viewpoint
         data_3d = self._rotate_motion_3d(self._centralize_motion(crop_motion), view)
 
+        # Project 3D points to 2D using virtual cameras
         data_2d = self._project_2D(data_3d)
 
         if self.return_type == 'render':
@@ -107,7 +114,6 @@ class AMASSDataset(BaseDataset):
             return{
                 'data': data,
                 'openpose': self._joints_to_openpose(data),
-                #'interpolate': self._interpolate_frames(data, mask, times=1),
                 'mask': mask,
                 'dataset_key': dataset_key,
                 'motion_key': motion_key,
@@ -120,9 +126,29 @@ class AMASSDataset(BaseDataset):
 
             data = self._normalize_to_network(data_2d.copy(), random_drop=False)
 
-            input =  self._normalize_to_network(data_2d, random_drop=True)
+            input =  self._normalize_to_network(data_2d, random_drop=self.train_noise)
 
-            interp = self.get_interpolate_motion(input.copy(), self.rate)
+            # linear interpolation prior
+            interp = self._get_interpolate_motion(input.copy(), self.rate)
+
+            # ensure we remove intermediate frames as inputs
+            input = input * ~encoder_mask.reshape(1,1,-1).astype(bool)
+
+            return{
+                'data': torch.from_numpy(data).float().reshape(-1,data.shape[-1]), 
+                'input': torch.from_numpy(input).float().reshape(-1,input.shape[-1]),
+                'interp': torch.from_numpy(interp).float().reshape(-1,interp.shape[-1]),
+                'src_mask':  torch.from_numpy(encoder_mask).bool(),
+                'tar_mask': torch.from_numpy(decoder_mask).bool(),
+                'mask': torch.from_numpy(mask).bool(),
+            }
+        elif self.return_type == '3D':
+            
+            encoder_mask, decoder_mask = self.generate_training_mask(mask, sample_rate = self.rate)
+
+            data = self._normalize_to_network(data_3d.copy(), random_drop=False)
+            input = self._normalize_to_network(data_3d, random_drop=self.train_noise)
+            interp = self._get_interpolate_motion(input.copy(), self.rate)
 
             input = input * ~encoder_mask.reshape(1,1,-1).astype(bool)
 
@@ -132,33 +158,17 @@ class AMASSDataset(BaseDataset):
                 'interp': torch.from_numpy(interp).float().reshape(-1,interp.shape[-1]),
                 'src_mask':  torch.from_numpy(encoder_mask).bool(),
                 'tar_mask': torch.from_numpy(decoder_mask).bool(),
-                'mask': torch.from_numpy(mask).bool()
-            }
-        elif self.return_type == '3D':
-
-            gt = data_3d.copy()
-            if self.phase == 'train':
-                data_3d = self._random_drop(data_3d)
-
-            interpolate = self.get_interpolate_motion(data_3d, self.rate)
-
-            data = self._normalize_to_network(gt)
-            interp = self._normalize_to_network(interpolate)
-            encoder_mask, decoder_mask = self.generate_training_mask(mask, sample_rate = self.rate)
-            input = self._normalize_to_network(data_3d.copy() * ~encoder_mask.reshape(1,1,-1).astype(bool))
-
-            return{
-                'data': torch.from_numpy(data).float(),
-                'input': torch.from_numpy(input).float(),
-                'interp': torch.from_numpy(interp).float(),
-                'src_mask':  torch.from_numpy(encoder_mask).bool(),
-                'tar_mask': torch.from_numpy(decoder_mask).bool(),
                 'mask': torch.from_numpy(mask).bool(),
             }
         else:
             raise NotImplementedError("Unknown data return type")
 
     def get_2d_motion_with_key(self, dataset_key, motion_key, view, rate=30):
+        '''
+        Helper function for getting test samples during inference
+        (Full length, do not crop along time dimension)
+        '''
+        
         # Get the h5 reader
         with h5py.File(self.root, "r") as f:
             try:
@@ -177,8 +187,6 @@ class AMASSDataset(BaseDataset):
             T = ((T-1) // 16) * 16 + 1
             data = data[:, :, :T]
         
-        #data = data[:22, :, :]
-        #data, decoder_mask, _ = self._random_temproal_crop(data)
         decoder_mask = np.array([0]*data.shape[-1])
 
         data_3d = self._rotate_motion_3d(self._centralize_motion(data), view)
@@ -197,7 +205,7 @@ class AMASSDataset(BaseDataset):
 
         input = self._normalize_to_network(data, self.evaluate_noise)
 
-        interpolate = self.get_interpolate_motion(input.copy(), rate)
+        interpolate = self._get_interpolate_motion(input.copy(), rate)
 
         input = input * ~encoder_mask.reshape(1,1,-1).astype(bool)
 
@@ -207,7 +215,9 @@ class AMASSDataset(BaseDataset):
                torch.from_numpy(encoder_mask).bool(), torch.from_numpy(decoder_mask).bool()
 
     def generate_training_mask(self, mask, sample_rate=30):
-
+        '''
+        Helper function for generating the encoder decoder trainig mask
+        '''
         seq_len = mask.shape[-1] 
         assert (seq_len - 1) % sample_rate == 0
 
@@ -224,14 +234,16 @@ class AMASSDataset(BaseDataset):
         return encoder_mask, decoder_mask
 
     def get_openpose_data (self, json_dir, sample_rate=8):
-        motion, conf, (scale, offset) = openpose2motion (json_dir)
+        '''
+        Helper function for transfering the openpose json dir to the network inputs
+        '''
+        motion, conf, (scale, offset) = openpose2motion (json_dir, scale=self.openpose_scale, offset=self.openpose_offset)
 
         decoder_mask = np.array([0]*motion.shape[-1])
 
         run = int(np.log2(sample_rate))
 
         interp_motion, interp_mask, inerp_conf= self._interpolate_frames(motion, decoder_mask, conf=conf, times=run)
-        #print(interp_motion)
 
         encoder_mask, _ = self.generate_training_mask(interp_mask, sample_rate)
 
@@ -240,7 +252,7 @@ class AMASSDataset(BaseDataset):
         interp_motion = interp_motion.reshape([-1, interp_motion.shape[-1]])
 
         input_motion = interp_motion.copy() * ~encoder_mask.reshape(1,-1).astype(bool)
-        #print(input_motion)
+
         return (scale, offset, inerp_conf), \
                torch.from_numpy(input_motion).float(), \
                torch.from_numpy(interp_motion).float(), \
@@ -274,17 +286,11 @@ class AMASSDataset(BaseDataset):
                 data = self._joints_to_openpose(data)
                 data = self._localize_motion(data)
 
-            #all_joints.append( np.mean(point_2d, axis=2, dtype=np.float64,keepdims=True) )
-
             mean += np.mean(data, axis=2, dtype=np.float64)
             std += np.std(data, axis=2, dtype=np.float64)
 
         self.mean_pose = mean / len(self.samples)
         self.std_pose = std / len(self.samples)
-        #self.mean_pose[-1] = np.array([0,0], dtype=np.float64)
-        #self.std_pose[-1] = np.array([1,1], dtype=np.float64)
-        #self.mean_pose = np.zeros_like(self.mean_pose, dtype=np.float64)
-        #self.std_pose = np.ones_like(self.std_pose, dtype=np.float64)
 
         self.std_pose[np.where(self.std_pose == 0)] = 1e-9
 
@@ -297,7 +303,7 @@ class AMASSDataset(BaseDataset):
                 data = np.array(f[dataset_key][motion_key]['joints']).copy()
             except:
                 raise ValueError("[Error] Can't read key (%s, %s) from h5 dataset" % (dataset_key, motion_key))
-        data = np.transpose(data, (1, 2, 0))
+        data = np.transpose(data, (1, 2, 0)) # Joints * Dimension * Time Length
         return data
 
     def _random_temproal_crop(self, data):
@@ -376,9 +382,12 @@ class AMASSDataset(BaseDataset):
 
     def _joints_to_openpose(self, data):
         body = np.zeros((19, data.shape[1], data.shape[2]))
+
+        # Rearrange the SMPL body indices into openpose indices
         indices = np.array([15, 12, 17, 19, 21, 16, 18, 20, 0, 
                             2,  5,  8 , 1,  4,  7,  10, 11])
         body[:17] = data[indices]
+        # averaged hand position
         body[17] = np.mean(data[22:37], axis=0)
         body[18] = np.mean(data[37:52], axis=0) 
 
@@ -402,7 +411,8 @@ class AMASSDataset(BaseDataset):
             point2d = np.divide(focal * point3d[:, [0, 2], :], np.maximum((point3d[:, [1, 1], :] + depth), d_min))
             point2d[:, 1, :] = -point2d [:, 1, :]
         
-        '''
+        ''' 
+        # Sanity check, for points that are too close to camera, we get very large value
         if np.min(point2d) > self.frame_boarder or np.min(point2d) < -self.frame_boarder:
             print(np.min(point2d))
             print(np.max(point2d))
@@ -417,6 +427,8 @@ class AMASSDataset(BaseDataset):
     def _interpolate_frames(self, data, mask, conf=None, times=1):
         """
         Perform linear interpolation between each frame, resulting 2*L-1 frames
+        Use for the openpose input case (for inference)
+        Input J*D*L -> J*D* 2L-1
         """
         def interpolate(data, mask, conf=None):
             length = data.shape[-1]
@@ -448,26 +460,42 @@ class AMASSDataset(BaseDataset):
 
         return new_data, new_mask, new_conf
 
-    def get_interpolate_motion(self, motion, rate):
+    def _get_interpolate_motion(self, motion, rate, mode='linear'):
+        '''
+        input J*D*L motion -> J*D*L interpolated motion (interpolated by key frame)
+        '''
+        if mode == 'linear':
+            motion = motion.copy()
+            seq_len = motion.shape[-1]
+            indice = np.arange(seq_len, dtype=int)
+            chunk = indice // rate
+            remain = indice % rate
 
-        motion = motion.copy()
-        seq_len = motion.shape[-1]
-        indice = np.arange(seq_len, dtype=int)
-        chunk = indice // rate
-        remain = indice % rate
+            prev = motion[:,:,chunk * rate]
 
-        prev = motion[:,:,chunk * rate]
+            next = np.concatenate( [ motion[:,:,(chunk[:-1]+1) * rate], motion[:,:,-1,np.newaxis]], axis=-1)
 
-        next = np.concatenate( [ motion[:,:,(chunk[:-1]+1) * rate], motion[:,:,-1,np.newaxis]], axis=-1)
+            interpolate = ( prev / rate * (rate-remain) ) + (next / rate * remain)
+        
+        else: # Quadratic
+            motion = motion.copy()
+            seq_len = motion.shape[-1]
+            indice = np.arange(seq_len, dtype=int)
+            chunk = indice // rate
+            remain = indice % rate
 
-        interpolate = ( prev / rate * (rate-remain) ) + (next / rate * remain)
+            prev = np.concatenate( [ -1 * motion[:,:,(chunk[:rate+1]+1) * rate], motion[:,:,(chunk[(rate+1):]-1) * rate]], axis=-1)
+
+            this = motion[:,:,chunk * rate]
+
+            next = np.concatenate( [ motion[:,:,(chunk[:-1]+1) * rate], motion[:,:,-1,np.newaxis]], axis=-1)
+
+            t = remain / rate
+            interpolate = this + ( (next-this) + (prev-this) ) / 2 * (t**2) + ( (next-this) - (prev-this) ) / 2 * t
 
         return interpolate
 
     def _rotate_motion_3d(self, motion3d, angles=None):
-
-        #motion3d[12, :, :] = (motion3d[16, :, :] + motion3d[17, :, :]) / 2
-        #motion3d[0, :, :] = (motion3d[1, :, :] + motion3d[2, :, :]) / 2
 
         basis = self.get_change_of_basis(motion3d, angles)
 
@@ -552,54 +580,33 @@ class AMASSDataset(BaseDataset):
             noise_frame = np.random.choice(idx_t, self.noise_rate, replace=False)
             drop_frame = np.random.choice(idx_t, self.joint_drop_rate, replace=False)
             flip_frame = np.random.choice(idx_t, self.flip_rate, replace=False)
-
-            ## Apply noise ##
-            noise = np.random.rand(J,D,L) * self.noise_weight
-            noise_idx =  np.array([3, 4, 6, 7, 10, 11, 13, 14, 15, 16, 17, 18])
-            noise_idx =  np.random.choice(noise_idx, 5, replace=False).reshape(-1,1,1)
-            data [noise_idx, :, noise_frame] = data [noise_idx, :, noise_frame] + noise [noise_idx, :, noise_frame]
-
-            ## Apply random drop ##
-            drop_idx =  np.array([0, 3, 4, 6, 7, 10, 11, 13, 14, 15, 16, 17, 18])
-            drop_idx =  np.random.choice(drop_idx, 3, replace=False).reshape(-1,1,1)
-            data [drop_idx, :, drop_frame] = 0.0
-
-            ## Apply random flip ##
-
-            right_leg = np.array([9, 10, 11, 16]).reshape(-1,1,1)
-            left_leg = np.array([12, 13, 14, 15]).reshape(-1,1,1)
-
-
-            tmp_right = data [right_leg, :, flip_frame]
-            data [right_leg, :, flip_frame] = data [left_leg, :, flip_frame]
-            data [left_leg, :, flip_frame] = tmp_right
-
-            return data
         else:
             idx_t = np.arange(0, L, self.eval_rate)
-            #keep_idx =  np.array([1, 2, 5, 8, 9, 12])
-
-            #drop = np.random.rand(J, D, L)
-            #drop [keep_idx, :, :] = 1.0
-            #valid = drop < (self.joint_drop_rate / 100.0)
-            #noise_frame = np.random.choice(idx_t, 4, replace=False)
-            num_drop_frame = int (self.joint_drop_rate / 100 * idx_t.shape[0] )
-            print(num_drop_frame)
-            drop_frame = np.random.choice(idx_t, num_drop_frame, replace=False)
-
-            drop_idx =  np.array([0, 3, 4, 6, 7, 10, 11, 13, 14, 15, 16, 17, 18])
-            drop_idx =  np.random.choice(drop_idx, self.num_drop_joint, replace=False).reshape(-1,1,1)
-            
-            #flip_frame = np.random.choice(idx_t, 4, replace=False)   
-            data [drop_idx, :, drop_frame] = 0.0
-
-            # Apply random drop ##
-            #data [valid] = 0.0
-            return data
+            noise_frame = np.random.choice(idx_t, 4, replace=False)
+            drop_frame = np.random.choice(idx_t, 4, replace=False)
+            flip_frame = np.random.choice(idx_t, 4, replace=False)       
 
 
+        ## Apply noise ##
+        noise = np.random.rand(J,D,L) * self.noise_weight
+        noise_idx =  np.array([3, 4, 6, 7, 10, 11, 13, 14, 15, 16, 17, 18])
+        noise_idx =  np.random.choice(noise_idx, 5, replace=False).reshape(-1,1,1)
+        data [noise_idx, :, noise_frame] = data [noise_idx, :, noise_frame] + noise [noise_idx, :, noise_frame]
 
-    def _occlusion(self, data):
-    
-        J, D, L = data.shape
-        idx_t = np.arange(0, L, self.eval_rate)
+        ## Apply random drop ##
+        drop_idx =  np.array([0, 3, 4, 6, 7, 10, 11, 13, 14, 15, 16, 17, 18])
+        drop_idx =  np.random.choice(drop_idx, 3, replace=False).reshape(-1,1,1)
+        data [drop_idx, :, drop_frame] = 0.0
+
+        ## Apply random flip ##
+
+        right_leg = np.array([9, 10, 11, 16]).reshape(-1,1,1)
+        left_leg = np.array([12, 13, 14, 15]).reshape(-1,1,1)
+
+
+        tmp_right = data [right_leg, :, flip_frame]
+        data [right_leg, :, flip_frame] = data [left_leg, :, flip_frame]
+        data [left_leg, :, flip_frame] = tmp_right
+
+        return data
+

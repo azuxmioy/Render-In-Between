@@ -1,5 +1,3 @@
-import torch
-import json
 import copy
 import numpy as np
 import h5py
@@ -7,9 +5,10 @@ import os
 import shutil
 from tqdm import tqdm
 from datasets import find_dataset_using_name
-from torch.utils.data import DataLoader
-from itertools import combinations
-from utils.visualize import motion2gif, openpose2motion, motion2openpose
+
+from utils.visualize import motion2gif
+from utils.utils import motion2openpose
+
 
 class Evaluator(object):
     def __init__(self, cfg):
@@ -20,13 +19,14 @@ class Evaluator(object):
         self.dataset = dataset_class(self.cfg, self.cfg.h5_file, return_type=cfg.return_type, phase='test')
         self.rotation_axes = np.array(cfg.rotation_axes)
         self.return_type = cfg.return_type
+
+        # For evaluation we fixed the viewpoint of each motion sample and stored into a cache file
         try:
             # make sure that the key starts with '/'
             self.rand_view = np.load(self.cfg.evaluate_view).copy()
             print('## Evaluation view loaded! ##')
         except:
             print("Can't read viewpoint file for evaluation, now a new file")
-            #self.rand_view = np.random.uniform(-1, 1, 1000) * np.pi
             self.rand_view = np.random.uniform(-self.rotation_axes, self.rotation_axes, (1000,3))
             np.save(self.cfg.evaluate_view, self.rand_view)
             print('############################')
@@ -42,7 +42,9 @@ class Evaluator(object):
         self.model = copy.deepcopy(model)
 
     def infer_h5_file(self, model, save_file_name):
-        
+        '''
+        Validation using the test set in AMASS, this function will generate a new h5 file containing predictions
+        '''
         model.eval()
 
         print('Evaluating.....')
@@ -77,6 +79,9 @@ class Evaluator(object):
         model.train()
 
     def evaluate_from_h5(self, h5_path):
+        '''
+        Load the generated h5 file and compute metrics
+        '''
         mse_global = 0.0
         mae_global = 0.0
         mma_global = 0.0
@@ -127,6 +132,9 @@ class Evaluator(object):
         return result 
         
     def visualize_skeleton(self, h5_path, save_img_path, samples=5):
+        '''
+        Generate GIF files from the h5 files
+        '''
         if not os.path.exists(save_img_path):
             print("Creating directory: {}".format(save_img_path))
             os.makedirs(save_img_path)
@@ -145,9 +153,6 @@ class Evaluator(object):
                 except:
                     raise ValueError("[Error] Can't read key %s from h5 dataset" % name)
 
-                print(np.amax(infer))
-                print(np.amin(infer))
-
                 gt_render = self._to_render(self._relocate(gt, localize=False))
                 infer_render= self._to_render(self._relocate(infer, localize=False))
                 interp_global = self._to_render(self._relocate(interp, localize=False))
@@ -162,9 +167,11 @@ class Evaluator(object):
       
 
     def interpolate_openpose(self, json_dir, sample_rate, save_dir):
+        '''
+        Given a openpose folder, interpolate #sample_rate frames between each keyframe
+        '''
 
-
-        # Source motion
+        # Json dir (Image coordinate) -> Network coordinate (Normalized)
         (scale, offset, conf), input_motion, interp_motion, \
             encoder_mask, decoder_mask = self.dataset.get_openpose_data(json_dir, sample_rate)
 
@@ -185,7 +192,6 @@ class Evaluator(object):
 
         motion2openpose (out, conf, save_dir['pred_dir'], scale=scale, offset=offset, sample_rate=sample_rate)
         motion2openpose (interp, conf, save_dir['linear_dir'], scale=scale, offset=offset, sample_rate=sample_rate)
-
 
         # Target motion
 

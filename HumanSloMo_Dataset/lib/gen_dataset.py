@@ -24,7 +24,7 @@ def main(args):
         clip_len = clip['num_frames']
 
 
-        if clip_name in video_list:
+        if video_name in video_list:
             vidcap = cv2.VideoCapture(os.path.join(args.input_path, video_name + '.mp4'))
             success, image = vidcap.read()
             count = 0

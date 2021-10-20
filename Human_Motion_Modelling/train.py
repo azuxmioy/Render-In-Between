@@ -10,7 +10,7 @@ from datasets import find_dataset_using_name
 
 from models.trainer import MotInterp_Trainer
 from models.evaluator import Evaluator
-
+from utils.utils import worker_init_fn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -90,7 +90,8 @@ def main(opts):
                         batch_size=opts.batch_size, 
                         shuffle=True, 
                         num_workers=opts.workers,
-                        pin_memory=True)
+                        pin_memory=True,
+                        worker_init_fn=worker_init_fn)
 
     trainer = MotInterp_Trainer(config, opts.resume)
     evaluator = Evaluator(config)
@@ -114,11 +115,11 @@ def main(opts):
         
         # Evaluation 
         if (epoch) % config.eval_step == 0:
-            output_file = 'test_{:03d}.out'.format(epoch+1)
+            output_file = 'validation.out'
             evaluator.infer_h5_file(Model_inference(trainer.pos_encode, trainer.transformer), os.path.join(image_directory, output_file))
             results = evaluator.evaluate_from_h5(os.path.join(image_directory, output_file))
             print_evaluation(results, epoch+1, os.path.join(output_directory, 'history.txt'), train_writer)
-            # Visualize generated human skeleton
+            # Visualize generated human skeleton, uncomment to generate gif file (can be very slow)
             #evaluator.visualize_skeleton(os.path.join(image_directory, output_file), os.path.join(image_directory,'gif_{:03d}'.format(epoch)))
         
         # Save network 
@@ -133,10 +134,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to the config file.')
     parser.add_argument('--save-root', type=str, default='./checkpoints/', help="outputs path")
-    parser.add_argument('--name', type=str, default='pose', help="output folder name")
+    parser.add_argument('--name', type=str, default='train', help="output folder name")
     parser.add_argument('--resume', action="store_true")
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--workers', type=int, default=4)
-    parser.add_argument('--seed', type=int, default=123)
+    parser.add_argument('--seed', type=int, default=777)
 
     main(parser.parse_args())
