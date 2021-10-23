@@ -70,8 +70,6 @@ class Generator(BaseNetwork):
         # Flow network.
         self.mask_cfg = gen_cfg.mask
 
-        #self.img_prev_embedding = LabelEmbedder(emb_cfg, self.num_img_channels + 1)
-
         # At beginning of training, only train an image generator.
         self.temporal_initialized = False
         # Whether to output hallucinated frame (when training temporal network)
@@ -180,7 +178,7 @@ class Generator(BaseNetwork):
                                                       cfg_init.gain))
 
 
-    def forward(self, label, label_prev, label_ref, img_fake, img_prev, img_ref):
+    def forward(self, label, label_prev, img_fake, img_prev):
         r"""vid2vid generator forward.
 
         Args:
@@ -193,20 +191,14 @@ class Generator(BaseNetwork):
 
 
         # Get SPADE conditional maps by embedding current label input.
-        cond_maps_now = self.get_cond_maps(torch.cat([img_fake, img_prev], dim=1), self.ref_embedding)
-        #cond_maps_now = self.get_cond_maps(torch.cat([img_ref, img_fake, img_prev], dim=1), self.ref_embedding)
-        # Get label embedding for the previous frame.
+
+        # Get conditional embedding for the frame.
         #cond_maps_prev = self.get_cond_maps(torch.cat([label_prev, img_prev], dim=1), self.ref_embedding)
-        #cond_maps_ref= self.get_cond_maps(torch.cat([label_ref, img_ref], dim=1), self.ref_embedding)
-        cond_maps_prev = cond_maps_now
+        cond_maps_prev = self.get_cond_maps(torch.cat([img_fake, img_prev], dim=1), self.ref_embedding)
         
-        # Not the first frame, will encode the previous frame and feed to
-        # the generator.
-        # x_img = self.down_first(img_prev)
-        # x_img_prev = self.down_first(torch.cat([img_fake, img_prev], dim=1))
-        # x_img_ref = self.down_first(torch.cat([img_fake, img_ref], dim=1))
+        #  encode the label and feed to the generator.
+
         x_img_prev = self.down_first(label)
-        x_img_ref = self.down_first(label)
         # Downsampling layers.
         for i in range(self.num_downsamples_img + 1):
             j = min(self.num_downsamples_embed, i)
@@ -218,8 +210,8 @@ class Generator(BaseNetwork):
         # Resnet blocks.
         j = min(self.num_downsamples_embed, self.num_downsamples_img + 1)
         for i in range(self.num_res_blocks):
-            cond_maps = cond_maps_prev[j] if i < self.num_res_blocks // 2 \
-                else cond_maps_now[j]
+            #cond_maps = cond_maps_prev[j] if i < self.num_res_blocks // 2 else cond_maps_now[j]
+            cond_maps = cond_maps_prev[j]
             x_img_prev = getattr(self, 'res_' + str(i))(x_img_prev, *cond_maps)
 
         x_img = x_img_prev
@@ -228,7 +220,7 @@ class Generator(BaseNetwork):
         for i in range(self.num_downsamples_img, -1, -1):
             # Get SPADE conditional inputs.
             j = min(i, self.num_downsamples_embed)
-            cond_maps = cond_maps_now[j]
+            cond_maps = cond_maps_prev[j]
             x_img = self.one_up_conv_layer(x_img, cond_maps, i)
 
 

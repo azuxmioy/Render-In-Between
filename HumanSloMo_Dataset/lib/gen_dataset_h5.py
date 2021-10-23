@@ -51,7 +51,7 @@ def main(args):
     train_pose_dir = os.path.join(args.image_path, 'train', 'poses')
     train_fake_dir = os.path.join(args.image_path, 'train', 'DAIN')
     
-    outfile = h5py.File('Dataset.h5', 'w')
+    outfile = h5py.File(os.path.join(args.output_path,'HumanSlomo.h5'), 'w')
     dt = h5py.special_dtype(vlen=np.uint8)
 
     # process test image folders
@@ -74,11 +74,11 @@ def main(args):
             dset1[i] = np.frombuffer(binary_data, dtype=np.uint8)
 
         ############################
-        gt_cain_list =  [os.path.join(gt_cain_dir, subfolder, f) for f in sorted(os.listdir(os.path.join(gt_cain_dir, subfolder))) if f.endswith('png') ] 
+        gt_dain_list =  [os.path.join(gt_cain_dir, subfolder, f) for f in sorted(os.listdir(os.path.join(gt_cain_dir, subfolder))) if f.endswith('png') ] 
         dset2 = sub_group.create_dataset( 'gt_dain', 
-                            (len(gt_cain_list),), maxshape=(len(gt_cain_list),), chunks=True, dtype=dt)
+                            (len(gt_dain_list),), maxshape=(len(gt_dain_list),), chunks=True, dtype=dt)
 
-        for i, path in enumerate(gt_cain_list):
+        for i, path in enumerate(gt_dain_list):
             image = open(path, 'rb')
             binary_data = image.read()
             dset2[i] = np.frombuffer(binary_data, dtype=np.uint8)
@@ -180,6 +180,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process image folder to H5 file')
 
     parser.add_argument("-i", "--image_path", default='../example', type=str, help="Path of the input image folder")
+    parser.add_argument("-o", "--output_path", default='./', type=str, help="Path of the output h5 folder")
 
     main(parser.parse_args())
 

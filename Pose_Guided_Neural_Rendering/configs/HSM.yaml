@@ -1,9 +1,6 @@
-h5_file: 'HSM_dain_more.h5' # Change to your directory 
-evaluate_view: 'data/evaluation_view.npy'
+h5_file: 'HumanSlomo.h5'         # Change to your directory 
 model_pretrain_G: 'checkpoints/netG_epoch006.pth'
 model_pretrain_D: 'checkpoints/netD_epoch006.pth'
-#model_pretrain_G: '/root/share/Image_Generator_aug/checkpoints/full_train/checkpoints/netG_epoch060.pth'
-#model_pretrain_D: '/root/share/Image_Generator_aug/checkpoints/full_train/checkpoints/netD_epoch060.pth'
 optimizer: ''
 
 ##############################
@@ -23,32 +20,19 @@ lr_d: 0.0004                     # initial discriminator learning rate
 #    Visualization parameters    # 
 ##################################
 
-display_freq: 20
-print_freq: 200
+display_freq: 20                 # number of steps to write losses to tensorboard
+print_freq: 200                  # number of steps to print losses to command line
 
-eval_step: 4
-save_step: 4
-num_image: 1
-update_frame_step: 12
+eval_step: 4                     # number of epochs to evaluate on validation set
+save_step: 4                     # number of epochs to save the model
+num_image: 1                     # number of images to write to tensorboard
+update_frame_step: 10            # number of epochs to increase the number of frames in the training sample
 
 ##############################
 #     Pose generator        # 
 ##############################
 
-Gen:
-    input_nc: [9, 66]
-    output_nc: [3, 1]
-    ngf: 32
-    init: 'normal'
-    norm: 'instance'
-    dropout: False    
-    n_blocks: 6
-    padding: 'reflect'
-    use_tanh: True
-    n_downsampling: 4
-    final_layer: 3
-
-gen:  
+gen:                             # network parameters for human image generator
     num_frames_G: 2
     input_image_nc: 3
     input_label_nc: 22
@@ -64,7 +48,7 @@ gen:
         kernel_size: 1
     weight_norm_type: spectral
     do_checkpoint: True
-    mask:
+    mask:                        # network parameters for the mask prediction model
         generate_raw_output: False
         num_filters: 32
         max_num_filters: 512
@@ -73,7 +57,7 @@ gen:
         kernel_size: 3
         activation_norm_type: instance
         weight_norm_type: spectral
-    embed:
+    embed:                       # network parameters for the conditional encoder
         use_embed: True
         arch: encoder
         num_filters: 64
@@ -85,13 +69,13 @@ gen:
 ##############################
 #     Image Discriminator    # 
 ##############################
-dis:
+dis:                           # network parameters for the discriminator
     input_image_nc: 3
     input_label_nc: 22
     num_frames_D: 2
     few_shot: False
     type: imaginaire.discriminators.fs_vid2vid
-    image:
+    image:                     
         num_filters: 32
         max_num_filters: 512
         num_discriminators: 2
@@ -99,7 +83,7 @@ dis:
         weight_norm_type: spectral
         activation_norm_type: instance
     additional_discriminators:
-        face:
+        face:                 # discriminator for the cropped face image
             num_filters: 32
             max_num_filters: 512
             num_discriminators: 1
@@ -109,7 +93,7 @@ dis:
             loss_weight: 10.0
             crop_func: utils.utils::crop_face_from_output
             vis: imaginaire.model_utils.fs_vid2vid::get_face_bbox_for_output
-        hand:
+        hand:                 # discriminator for the cropped hand image
            num_filters: 32
            max_num_filters: 512
            num_discriminators: 1
@@ -126,7 +110,17 @@ dis:
 ##############################
 gan_mode: hinge
 
-# loss for using peerceptual loss
+# weight for using GAN loss
+gan:
+    fuse: 0.0
+    raw: 1.0
+    face: 0.1
+    hand: 0.1
+
+# weight for GAN feature matching loss
+fm_w: 1.0
+
+# weight for using peerceptual loss
 perceptual:
     weight: 10.0
     model: vgg19
@@ -144,24 +138,22 @@ perceptual:
       - 1.0
     criterion: 'l1'
     num_scales: 1
-gan:
-    fuse: 0.0
-    raw: 1.0
-    face: 0.1
-    hand: 0.1
 
-fm_w: 1.0
+# weight for L1 reconstruction loss
 l1_w: 30.0
+
+# weight for mask regularization
 mask_w: 5.0
 
 ###################################
 #    Evaluation setting    # 
 ###################################
-test_gen_mode: 'previous'     #  keyframe | previous | two_frame
+test_video_list : ['test_001', 'test_006', 'test_011', 'test_016', 'test_021', 'test_026']
 gen_videos: true
+eval_frames: 40    # max number of frames to use in the validation
 
 ###################################
-#    Dataset motion setting    # 
+#    Dataset training setting    # 
 ###################################
 train_video_list: [
                    '00_Dance_001', '00_Dance_002', '00_Dance_003', '00_Dance_004', '00_Dance_005',
@@ -185,20 +177,18 @@ train_video_list: [
                    '10_Kungfu_441', '10_Kungfu_442', 
                    '11_Kungfu_451'
                     ]
-test_video_list : ['test_004', 'test_006', 'test_106', 'test_112', 'test_204', 'test_301', 'test_312', 'test_314', 'test_404' ,'test_409', 'test_413', 'test_415']
-eval_frames: 40
 
-max_frames: 4
-sampling_mode: 'neighbor'
-random_drop_prob: 0.02
-random_blur_rate: 0.06
-gauss_sigma: 5
-skeleton_thres: 0.001
-foot_thres: 0.001
 
-load_width: 480
-load_height: 320
+max_frames: 4              # max number of frames to use in the training samples
+random_drop_prob: 0.02     # probablistic to randomly drop a body joint
+random_blur_rate: 0.06     # probablistic to randomly blur a body parts in the background image
+gauss_sigma: 5             # bluring parameters
+skeleton_thres: 0.001      # confidence threshold to use the body joints
+foot_thres: 0.001          # confidence threshold to use the foot joints
 
-model_width: 480
-model_height: 320
+load_width: 480            # load the image with the width and height for preprocessing 
+load_height: 320           #
+
+model_width: 480           # image size to feed into a model, if model size is smaller than load size
+model_height: 320          # we will perform random cropping on the image to downscale to model size
 

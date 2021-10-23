@@ -15,7 +15,7 @@ from models.trainer import Motion_recovery_auto
 from models.evaluator import Evaluator
 
 from utils.record_summary import record_image_summaries, record_scalar_summaries
-from utils.visualize import print_losses
+from utils.visualize import print_losses, print_evaluation
 from utils.utils import *
 
 
@@ -55,7 +55,8 @@ def main(opts):
                         shuffle=True, 
                         num_workers=opts.workers,
                         pin_memory=True,
-                        drop_last=False)
+                        drop_last=False,
+                        worker_init_fn=worker_init_fn)
 
 
     trainer = Motion_recovery_auto(config, opts.resume)
@@ -69,7 +70,6 @@ def main(opts):
     total_steps = (trainer.start_epoch+1) * epoch_iteration
 
     for epoch in range(start_epoch+1, config.nr_epochs):
-        epoch_start_time = time.time()
         print('Epoch: %d, total %d samples' % (epoch, len(loader.dataset)))
         for i, data in enumerate(loader):
             iter_start_time = time.time()
@@ -79,10 +79,10 @@ def main(opts):
 
             
             # Dump training stats in log file / display in console
-            #if (total_steps + 1) % config.print_freq == 0:
-            #    errors = trainer.get_current_losses()
-            #    t = (time.time() - iter_start_time) / opts.batch_size
-            #    print_losses(epoch+1, i+1, errors, t, os.path.join(output_directory, 'history.txt'))
+            if (total_steps + 1) % config.print_freq == 0:
+                errors = trainer.get_current_losses()
+                t = (time.time() - iter_start_time) / opts.batch_size
+                print_losses(epoch+1, i+1, errors, t, os.path.join(output_directory, 'history.txt'))
             
             # Record scalars to tensorboard
             if (total_steps + 1) % config.display_freq == 0:
@@ -103,17 +103,18 @@ def main(opts):
             trainer.save_network(epoch+1)
 
         if (epoch+1) % config.eval_step == 0:
-            evaluator.evaluate_from_dataset(trainer.net_G, epoch+1, max_keyframes=config.eval_frames)
+            metric = evaluator.evaluate_from_dataset(trainer.net_G, epoch+1, max_keyframes=config.eval_frames)
+            print_evaluation(metric, epoch+1, writer=train_writer)
 
         if (epoch+1) % config.update_frame_step == 0:
             loader.dataset.update_max_frame(loader.dataset.get_max_frames() + 1)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='play our Dance Transformer')
+    parser = argparse.ArgumentParser(description='Training model')
 
     parser.add_argument('--config', type=str, default='configs/HSM.yaml', help='Path to the config file.')
     parser.add_argument('--save-root', type=str, default='./checkpoints/', help="outputs path")
-    parser.add_argument('--name', type=str, default='pose', help="outputs path")
+    parser.add_argument('--name', type=str, default='train', help="outputs path")
     parser.add_argument('--resume', action="store_true")
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--workers', type=int, default=4)

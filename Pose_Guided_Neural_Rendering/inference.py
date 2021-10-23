@@ -1,21 +1,11 @@
 import os, sys
-import time
 import numpy as np
 import torch
 import random
 import argparse
-import shutil
-
-from datasets import find_dataset_using_name
-
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-
 from models.trainer import Motion_recovery_auto
 from models.evaluator import Evaluator
 
-from utils.record_summary import record_image_summaries, record_scalar_summaries
-from utils.visualize import print_losses
 from utils.utils import *
 
 def main(opts):
@@ -41,7 +31,7 @@ def main(opts):
     dain_dir = os.path.join(opts.input_dir, 'DAIN')
     pose_dir =  os.path.join(opts.input_dir, 'Predict_motion')
     save_dir = os.path.join(opts.save_dir, 'Generated_frames')
-    gt_dir = os.path.join(opts.input_dir, 'gt')
+    # gt_dir = os.path.join(opts.input_dir, 'gt')
     evaluator.evaluate_from_folder(trainer.net_G, train_dir, dain_dir, pose_dir, save_dir, gt_dir=None, gen_vid=False)
 
 

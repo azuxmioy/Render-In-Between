@@ -1,16 +1,44 @@
 import torch
 import torch.nn as nn
-import copy
 import os
-import cv2
-import numpy as np
-import random
+from torch.optim import lr_scheduler
 
 from models.generator import Generator
 from models.discriminator import Discriminator
 
 from models.losses import FeatureMatchingLoss, PerceptualLoss, GANLoss, MaskRegulationLoss, MaskedL1loss
-from utils.utils import get_scheduler, load_state_dict, tensor2images, visualize_pose
+from utils.utils import load_state_dict, tensor2images
+
+##############################################################################
+# Network helper functions
+############################################################################## 
+
+def get_scheduler(optimizer, opt, iterations=-1):
+    if 'lr_policy' not in opt or opt.lr_policy == 'constant':
+        scheduler = None # constant scheduler
+
+    elif opt.lr_policy == 'lambda':
+        def lambda_rule(epoch):
+            lr_l = 1.0 - max(0, epoch + 1- opt.step_size) / float(opt.max_epoch-opt.step_size)
+            return lr_l
+        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_rule)
+
+    elif opt.lr_policy == 'step':
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.step_size,
+                                 gamma=opt.gamma, last_epoch=iterations)
+    elif opt.lr_policy == 'multistep':
+        step = opt.step_size
+        scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[step, step+step//2, step+step//2+step//4],
+                                        gamma=opt.gamma, last_epoch=iterations)
+    elif opt.lr_policy == 'plateau':
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, threshold=0.01, patience=5)
+    else:
+        return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
+    return scheduler
+
+##############################################################################
+# Main trainer class
+############################################################################## 
 
 class Motion_recovery_auto(nn.Module):
 
@@ -26,7 +54,8 @@ class Motion_recovery_auto(nn.Module):
         self._init_losses()
         self._init_optimizers()
 
-        #print( sum(p.numel() for p in self.transformer.parameters() if p.requires_grad))
+        #print( sum(p.numel() for p in self.net_G.parameters() if p.requires_grad))
+        #print( sum(p.numel() for p in self.net_D.parameters() if p.requires_grad))
 
     def _init_models(self):
         self.net_G = Generator(self.cfg.gen).to(self.device)
@@ -119,7 +148,7 @@ class Motion_recovery_auto(nn.Module):
         self.img  = data['img'].to(self.device).transpose(1,0)
         self.pose = data['pose'].to(self.device).transpose(1,0)
         self.skel = data['skel'].to(self.device).transpose(1,0)
-        self.fake = data['fake'].to(self.device).transpose(1,0)
+        self.back = data['back'].to(self.device).transpose(1,0)
         self.label = torch.cat([self.skel, self.pose ], dim=2)
 
         # B * L * H * W -> L * B * H * W
@@ -138,24 +167,21 @@ class Motion_recovery_auto(nn.Module):
 
             label = self.label [i+1]
             label_prev = self.label [i]
-            label_ref = self.label [-1]
 
-            img_fake = self.fake[i+1]
+            img_back = self.back[i+1]
             img_prev = self.img[0] if img_prev is None else self.output_list[-1]
-            img_ref = self.img[-1]
 
             real_img = self.img[i+1]
             fg_mask = self.mask[i+1].unsqueeze(1).repeat(1,3,1,1)
 
-            gen, mask = self.net_G(label, label_prev, label_ref, img_fake, img_prev, img_ref)
-            #gen, mask = self.net_G(self.skel[i+1], self.skel[i], img_fake, img_prev)
+            gen, mask = self.net_G(label, label_prev, img_back, img_prev)
 
             self.gen_mask_list.append(mask.clone().detach())
             self.gen_img_list.append(gen.clone().detach())
 
             mask = mask.repeat(1,3,1,1)
             not_mask = (1 - mask)
-            fuse = gen * mask + img_fake * not_mask
+            fuse = gen * mask + img_back * not_mask
 
             self.output_list.append(fuse.clone().detach())
 
@@ -294,7 +320,7 @@ class Motion_recovery_auto(nn.Module):
 
         vis['image/src'] = tensor2images (self.img[0].data, num_images)
         vis['image/gt'] = tensor2images (self.img[-2].data, num_images)
-        vis['image/fake'] = tensor2images (self.fake[-2].data, num_images)
+        vis['image/back'] = tensor2images (self.back[-2].data, num_images)
         vis['image/gen'] = tensor2images (self.gen_img_list[-1].data, num_images)
         vis['image/gen_mask'] = tensor2images (self.gen_mask_list[-1].data, num_images)
         vis['image/fuse'] = tensor2images (self.output_list[-1].data, num_images)
@@ -313,8 +339,8 @@ class Motion_recovery_auto(nn.Module):
         save_path = os.path.join(self.out_path, "netD_epoch{:03d}.pth".format(epoch))
         torch.save(self.net_D.cpu().state_dict(), save_path)
 
+        # Don't save optimizer to save space
         #save_path = os.path.join(self.out_path, "opt_epoch{:03d}.pth".format(epoch))
-
         #torch.save({'Gen': self.optimizer_G.state_dict(), 'Dis': self.optimizer_D.state_dict() }, save_path)
 
         self.net_D.to(self.device)

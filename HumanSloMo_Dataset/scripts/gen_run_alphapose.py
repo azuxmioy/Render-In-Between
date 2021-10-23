@@ -1,10 +1,6 @@
 
 import argparse
-import glob
-import csv
 import os
-
-#/root/share/openpose/examples/openpose/openpose.bin --image_dir {} --face --hand --display 0 --render_pose 0 --write_json {}
 
 
 def main(args):
@@ -19,7 +15,6 @@ def main(args):
             save_path = os.path.join(args.output_path, subfolder)
         
             cmd_base = "python3 scripts/demo_inference.py --cfg configs/halpe_136/resnet/256x192_res50_lr1e-3_2x-regression-coco_wholebody.yml "
-            #cmd_base +="--checkpoint pretrained_models/halpe26_fast_res50_256x192.pth --min_box_area 10000 --format open --pose_track --sp "
             cmd_base +="--checkpoint pretrained_models/final_DPG.pth --min_box_area 10000 --format open --pose_track --sp "
             cmd_base += "--indir {} --outdir {}".format(image_path, save_path)
 

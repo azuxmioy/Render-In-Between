@@ -3,8 +3,6 @@ from utils.keypoint2img import *
 import numpy as np
 import torch
 import h5py
-import random
-import os
 import io
 import cv2
 from PIL import Image, ImageFilter
@@ -14,38 +12,6 @@ from torchvision import transforms
 import albumentations as A
 cv2.setNumThreads(0)
 cv2.ocl.setUseOpenCL(False)
-
-def __crop(img, size, pos):
-    im_h = img.height
-    im_w = img.width
-
-    th, tw = size
-    x1, y1 = pos    
-
-    return img.crop((x1, y1, x1 + tw , y1 + th))
-
-def __flip(img, flip):
-    if flip:
-        return img.transpose(Image.FLIP_LEFT_RIGHT)
-    return img
-
-def get_transform(loadsize, modelsize, crop_pos, flip, method=Image.BICUBIC, random_flip=True, normalize=True, toTensor=True):
-
-    transform_list = []
-    ### resize input image
-    transform_list.append( transforms.Resize(loadsize, interpolation=method) )
-
-    transform_list.append( transforms.Lambda(lambda img: __crop(img, modelsize, crop_pos ) ))
-
-    ### random flip
-    if random_flip:
-        transform_list.append(transforms.Lambda(lambda img: __flip(img, flip)))
-    if toTensor:
-        transform_list += [transforms.ToTensor()]
-    if normalize:
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5),
-                                                (0.5, 0.5, 0.5))]
-    return transforms.Compose(transform_list)
 
 def get_alb_transform(loadsize, modelsize, crop_pos=None, method=cv2.INTER_CUBIC, param=None):
     
@@ -59,9 +25,11 @@ def get_alb_transform(loadsize, modelsize, crop_pos=None, method=cv2.INTER_CUBIC
                                                        rotate_limit=[param['angle'], param['angle']],
                                                        interpolation=method,
                                                        border_mode=cv2.BORDER_CONSTANT, value=0, always_apply=True))
-        #transform_list.append( A.Crop (x_min=crop_pos[0], y_min=crop_pos[1],
-        #                           x_max=crop_pos[0]+modelsize[1],
-        #                           y_max=crop_pos[1]+modelsize[0], always_apply=True) )
+        if modelsize[0] < loadsize[0] and modelsize[1] < loadsize[1]:
+
+            transform_list.append( A.Crop (x_min=crop_pos[0], y_min=crop_pos[1],
+                                  x_max=crop_pos[0]+modelsize[1],
+                                  y_max=crop_pos[1]+modelsize[0], always_apply=True) )
     else:
         transform_list.append( A.Resize(height=modelsize[0], width=modelsize[1], interpolation=method, always_apply=True) )
 
@@ -81,18 +49,19 @@ class HSMAutoDataset(BaseDataset):
         self.train_vid_list = cfg.train_video_list
         self.test_vid_list = cfg.test_video_list
 
-        self.load_width = cfg.load_width
+        self.load_width = cfg.load_width     # this is data preprocessing size
         self.load_height = cfg.load_height
 
-        self.width = cfg.model_width       # this is network size
-        self.height = cfg.model_height     # this is network size
+        self.width = cfg.model_width         # this is network input size
+        self.height = cfg.model_height     
 
-        self.sampling_mode = cfg.sampling_mode
+        # Skeletal image preprocessing setting
         self.random_blur_rate = cfg.random_blur_rate
         self.random_drop_prob = cfg.random_drop_prob
         self.skeleton_thres = cfg.skeleton_thres
         self.foot_thres = cfg.foot_thres
         self.gauss_sigma = cfg.gauss_sigma
+        
         self.phase = phase
 
 
@@ -107,88 +76,26 @@ class HSMAutoDataset(BaseDataset):
 
         self.to_tensor = transforms.Compose([transforms.ToTensor()])
       
-        self.videl_list = self.train_vid_list if self.phase == 'train' else self.test_vid_list
+        self.video_list = self.train_vid_list if self.phase == 'train' else self.test_vid_list
 
 
         self.n_frames = {}
         self.samples = []
 
         try: 
-            for vid_name in self.videl_list:
+            for vid_name in self.video_list:
                 with h5py.File(self.root, "r") as f:
                     if self.phase == 'train':
-                        sample_list = list(f[vid_name]['train_fake'])
+                        sample_list = list(f[vid_name]['train_dain'])
                     else:
                         sample_list = list(f[vid_name]['gt_images'])
                     self.n_frames[vid_name] = len(sample_list)
                     tuple_list = [(vid_name, list(range(idx, idx+self.max_frames)), 'f') for idx in range(len(sample_list)+2-self.max_frames)]
-                    #tuple_list += [(vid_name, list(range(idx, idx-self.max_frames, -1)), 'b') for idx in range(len(sample_list)+1, self.max_frames-1, -1)]
 
                     self.samples.extend(tuple_list)
 
         except: # do not read h5 file when inference only
             pass
-
-    def get_max_frames(self):
-        return self.max_frames
-
-    def update_max_frame(self, new_max_frame):
-        self.max_frames = new_max_frame
-
-        self.n_frames = {}
-        self.samples = []
-
-        for vid_name in self.videl_list:
-            with h5py.File(self.root, "r") as f:
-                if self.phase == 'train':
-                    sample_list = list(f[vid_name]['train_fake'])
-                else:
-                    sample_list = list(f[vid_name]['gt_images'])
-                self.n_frames[vid_name] = len(sample_list)
-                tuple_list = [(vid_name, list(range(idx, idx+self.max_frames)), 'f') for idx in range(len(sample_list)+2-self.max_frames)]
-                #tuple_list += [(vid_name, list(range(idx, idx-self.max_frames, -1)), 'b') for idx in range(len(sample_list)+1, self.max_frames-1, -1)]
-
-                self.samples.extend(tuple_list)
-
-
-    def get_testdata_with_key(self, video_key, frame_index):
-
-        with h5py.File(self.root, "r") as f:
-            try:
-                img = np.array(f[video_key]['gt_images'][frame_index]).copy()
-                cain = np.array(f[video_key]['gt_cain'][frame_index]).copy()
-                pose = np.array(f[video_key]['gt_poses'][frame_index]).copy()
-            except:
-                raise ValueError("[Error] Can't read key (%s, %s) from h5 dataset" % (video_key, frame_index))
-
-
-        transform_i = get_alb_transform(loadsize = (self.load_height, self.load_width), modelsize = (self.height, self.width))
-
-        img = np.asarray(Image.open(io.BytesIO(img)))
-        cain= np.asarray(Image.open(io.BytesIO(cain)))
-
-        joint_lists = [(pose[i,0], pose[i,1]) for i in range(pose.shape[0])]
-        joint_conf = [ pose[i,2] for i in range(pose.shape[0])]
-
-        transformed_image = transform_i(image=img, keypoints=joint_lists) ['image']
-        transformed_landmark = transform_i(image=img, keypoints=joint_lists) ['keypoints']
-        transformed_cain = transform_i(image=cain, keypoints=joint_lists) ['image']
-
-
-        posemap = self._generate_pose_map(transformed_landmark, joint_conf, self.height, self.width  )
-        skeleton = self._generate_skeleton(transformed_landmark, joint_conf, self.height, self.width  )
-        mask, _ = self._generate_human_mask(transformed_landmark, joint_conf, self.height, self.width  )
-
-
-        return{
-            'img' : self.to_tensor_norm (transformed_image).unsqueeze(0),
-            'cain' : self.to_tensor_norm (transformed_cain).unsqueeze(0),
-            'pose' : torch.from_numpy(posemap).float().unsqueeze(0),
-            'skel' : self.to_tensor_norm (skeleton).unsqueeze(0),
-            'mask' : self.to_tensor(mask).squeeze().unsqueeze(0)
-        }
-
-
 
     def __len__(self):
         return len(self.samples)
@@ -196,10 +103,8 @@ class HSMAutoDataset(BaseDataset):
     def __getitem__(self, index):
 
         # decide transform params
-        x_pos = np.random.randint(20, 120)
-        y_pos = np.random.randint(10, 30)
-        #x_pos = np.random.randint(50, 300)
-        #y_pos = np.random.randint(0, 50)
+        x_pos = np.random.randint(0, max(self.load_width-self.width,1))
+        y_pos = np.random.randint(0, max(self.load_height-self.height,1))
         param = dict()
         param['shift'] = np.random.random_sample() * 0.125 - 0.0625
         param['angle'] = np.random.random_sample() * 20 - 10
@@ -210,13 +115,13 @@ class HSMAutoDataset(BaseDataset):
                                           crop_pos = (x_pos, y_pos),
                                           param=param)
         # start reading data
-        video_key, frame_list, side = self.samples[index]
+        video_key, frame_list, _ = self.samples[index]
 
         img_list = []
         pose_list = []
         skel_list = []
         mask_list = []
-        fake_list = []
+        back_list = []
 
         for i, frame_idx in enumerate(frame_list):
             data = self._get_h5_data(video_key, frame_idx)
@@ -241,21 +146,21 @@ class HSMAutoDataset(BaseDataset):
             mask_list.append(self.to_tensor(mask).float())
 
             if i == 0:
-                fake_list.append(torch.zeros(img_list[0].shape))
+                back_list.append(torch.zeros(img_list[0].shape))
             else:
-                fake_data = self._get_fake_data(video_key, frame_idx)
-                fake = Image.open(io.BytesIO(fake_data['fake']))
-                fake_np = np.asarray(fake)
-                blur = np.asarray(fake.filter(ImageFilter.GaussianBlur(radius = 10)))
+                back_data = self._get_back_data(video_key, frame_idx)
+                back = Image.open(io.BytesIO(back_data['dain']))
+                back_np = np.asarray(back)
+                blur = np.asarray(back.filter(ImageFilter.GaussianBlur(radius = 10)))
 
-                transformed_fake = self.to_tensor_norm(transform_i(image=fake_np, keypoints=joint_lists) ['image'])
+                transformed_back = self.to_tensor_norm(transform_i(image=back_np, keypoints=joint_lists) ['image'])
                 transformed_blur = self.to_tensor_norm(transform_i(image=blur, keypoints=joint_lists) ['image'])
 
                 if self.phase == 'train':
                     blur_mask = self.to_tensor(part_mask).repeat(3,1,1).float()
-                    transformed_fake = transformed_blur * blur_mask + transformed_fake * (1 - blur_mask)
+                    transformed_back = transformed_blur * blur_mask + transformed_back * (1 - blur_mask)
 
-                fake_list.append(transformed_fake)
+                back_list.append(transformed_back)
 
 
         return{
@@ -264,13 +169,13 @@ class HSMAutoDataset(BaseDataset):
                 'pose' : torch.stack(pose_list, dim=0),
                 'skel' : torch.stack(skel_list, dim=0),
                 'mask' : torch.stack(mask_list, dim=0).squeeze(),
-                'fake' : torch.stack(fake_list, dim=0)
+                'back' : torch.stack(back_list, dim=0)
             }
 
-
     def _get_h5_data(self, video_key, frame_index):
-
-        # Get the h5 reader
+        '''
+        # return image and its corresponding pose
+        '''
         data = {}
 
         with h5py.File(self.root, "r") as f:
@@ -282,39 +187,26 @@ class HSMAutoDataset(BaseDataset):
                 raise ValueError("[Error] Can't read key (%s, %s) from h5 dataset" % (video_key, frame_index))
         return data
 
-    def _get_fake_data(self, video_key, frame_index):
-
-        # Get the h5 reader
+    def _get_back_data(self, video_key, frame_index):
+        '''
+        # return image's background image, the index is differed by 1
+        '''
         data = {}
 
         with h5py.File(self.root, "r") as f:
             try:
-                data['fake'] = np.array(f[video_key]['train_fake'][frame_index-1]).copy()
+                data['dain'] = np.array(f[video_key]['train_dain'][frame_index-1]).copy()
 
             except:
                 raise ValueError("[Error] Can't read key (%s, %s) from h5 dataset" % (video_key, frame_index))
 
         return data
 
-    def _select_src_sample(self, vid_name, idx):
-
-        if self.sampling_mode == 'random':
-            a = np.arange(self.n_frames[vid_name]+2)
-            a = np.delete(a, idx+1)
-            src_idx = np.random.choice(a)
-            assert(src_idx < self.n_frames[vid_name]+2 )
-            return int(src_idx)
-
-        elif self.sampling_mode == 'neighbor':
-            src_idx = np.random.choice([idx, idx+2])
-            assert(src_idx < self.n_frames[vid_name]+2 )
-            return int(src_idx)
-        else: 
-            raise NotImplementedError("Unknown sampling type!")
-
-
     def _generate_pose_map(self, landmark, conf, height, width):
-        
+        '''
+        generate a 19 channel pose map where each joints is represented by random gaussion peak
+        return nparray of 19 * H * W
+        '''
         maps = []
         n_landmark = len(landmark)
 
@@ -344,7 +236,10 @@ class HSMAutoDataset(BaseDataset):
         return maps
 
     def _generate_skeleton(self, landmark, conf, height, width):
-
+        '''
+        generate a 3 channel skeletal map where each limbs is represented by an unique color
+        return nparray of H * W * 3
+        '''
         pose_img = np.zeros((height, width, 3), np.uint8)
         size = (width, height) 
 
@@ -357,7 +252,11 @@ class HSMAutoDataset(BaseDataset):
 
 
     def _generate_human_mask(self, landmark, conf, height, width):
-
+        '''
+        generate two binary human-centric dilation mask that connect each limbs with thick lines
+        one is use for mask regularization and one use for generate random blur
+        return nparray of H * W 
+        '''
         dict_pose_line = {}
         n_landmark = len(landmark)
 
@@ -434,4 +333,68 @@ class HSMAutoDataset(BaseDataset):
         part_binary[part_mask>128] = 1
         return binary.astype(np.bool), part_binary.astype(np.bool)
 
+    def get_max_frames(self):
+        return self.max_frames
+
+    def update_max_frame(self, new_max_frame):
+        '''
+        Replace the original sample lists by a new one where
+        each sample contains new_max_frame of frames
+        '''
+        self.max_frames = new_max_frame
+
+        self.n_frames = {}
+        self.samples = []
+
+        for vid_name in self.videl_list:
+            with h5py.File(self.root, "r") as f:
+                if self.phase == 'train':
+                    sample_list = list(f[vid_name]['train_fake'])
+                else:
+                    sample_list = list(f[vid_name]['gt_images'])
+                self.n_frames[vid_name] = len(sample_list)
+                tuple_list = [(vid_name, list(range(idx, idx+self.max_frames)), 'f') for idx in range(len(sample_list)+2-self.max_frames)]
+
+                self.samples.extend(tuple_list)
+
+
+    def get_testdata_with_key(self, video_key, frame_index):
+        '''
+        use in the inference mode, return as batch size of 1
+        return tensor of 1 * L * D * H * W
+        '''
+        with h5py.File(self.root, "r") as f:
+            try:
+                img = np.array(f[video_key]['gt_images'][frame_index]).copy()
+                dain = np.array(f[video_key]['gt_dain'][frame_index]).copy()
+                pose = np.array(f[video_key]['gt_poses'][frame_index]).copy()
+            except:
+                raise ValueError("[Error] Can't read key (%s, %s) from h5 dataset" % (video_key, frame_index))
+
+
+        transform_i = get_alb_transform(loadsize = (self.load_height, self.load_width), modelsize = (self.height, self.width))
+
+        img = np.asarray(Image.open(io.BytesIO(img)))
+        dain= np.asarray(Image.open(io.BytesIO(dain)))
+
+        joint_lists = [(pose[i,0], pose[i,1]) for i in range(pose.shape[0])]
+        joint_conf = [ pose[i,2] for i in range(pose.shape[0])]
+
+        transformed_image = transform_i(image=img, keypoints=joint_lists) ['image']
+        transformed_landmark = transform_i(image=img, keypoints=joint_lists) ['keypoints']
+        transformed_dain = transform_i(image=dain, keypoints=joint_lists) ['image']
+
+
+        posemap = self._generate_pose_map(transformed_landmark, joint_conf, self.height, self.width  )
+        skeleton = self._generate_skeleton(transformed_landmark, joint_conf, self.height, self.width  )
+        mask, _ = self._generate_human_mask(transformed_landmark, joint_conf, self.height, self.width  )
+
+
+        return{
+            'img' : self.to_tensor_norm (transformed_image).unsqueeze(0),
+            'dain' : self.to_tensor_norm (transformed_dain).unsqueeze(0),
+            'pose' : torch.from_numpy(posemap).float().unsqueeze(0),
+            'skel' : self.to_tensor_norm (skeleton).unsqueeze(0),
+            'mask' : self.to_tensor(mask).squeeze().unsqueeze(0)
+        }
 
