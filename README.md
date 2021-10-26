@@ -1,6 +1,4 @@
-# Render In-between: Motion GuidedVideo Synthesis for Action Interpolation
-
-### [Hsuan-I Ho](https://azuxmioy.github.io/), [Xu Chen](https://ait.ethz.ch/people/xu/), [Jie Song](https://ait.ethz.ch/people/song/), [Otmar Hilliges](https://ait.ethz.ch/people/hilliges/)
+# Render In-between: Motion Guided Video Synthesis for Action Interpolation
 
 [Paper] [Video] [Poster]
 
@@ -12,19 +10,21 @@ This is the offical Pytorch implementation for our work. Our proposed framework 
 
 ## [HumanSlomo Dataset](https://github.com/azuxmioy/Render-In-Between/tree/main/HumanSloMo_Dataset) 
 
-![](https://i.imgur.com/Dbmkrta.gif)
+<img src="https://github.com/azuxmioy/Render-In-Between/blob/main/img/thumbnail.gif?raw=true">
 
-
-We collected a set of high FPS createive commons of human videos from Youtube. The video are manually split into several continuous clips for training and test. You can also build your own video dataset using the provided scripts.
+We collected a set of high FPS createive commons of human videos from Youtube. The videos are manually split into several continuous clips for training and test. You can also build your own video dataset using the provided scripts.
 
 ## [Human Motion Modeling](https://github.com/azuxmioy/Render-In-Between/tree/main/Human_Motion_Modelling)
-![](https://i.imgur.com/6RDU54s.gif)
+
+<img src="https://github.com/azuxmioy/Render-In-Between/blob/main/img/motion.gif?raw=true">
 
 Our human motion model is trained on a large scale motion capture dataset AMASS. We provide code to synthesize 2D human motion sequences for training from the SMPL parameters defined in AMASS. You can also simply use the pre-trained model to interpolate low-frame-rate noisy human body joints to high-frame-rate motion sequences.
 
 
 ## [Pose Guided Neural Rendering](https://github.com/azuxmioy/Render-In-Between/tree/main/Pose_Guided_Neural_Rendering)
-![](https://i.imgur.com/8W1ndka.gif)
+
+<img src="https://github.com/azuxmioy/Render-In-Between/blob/main/img/generation.gif?raw=true">
+
 The neural rendering model learned to map the pose sequences back to the original video domain. The final result is composed with the background warping from DAIN and the generated human body according to the predicted blending mask autoregressively. The model is trained in a conditional image generation setting, given only low-frame-rate videos as training data. Therefore, you can train your custom neural rendering model by constructing your own video dataset.
 
 ## Results and Videos
