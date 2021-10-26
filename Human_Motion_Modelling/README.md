@@ -1,1 +1,1 @@
-# HumanSloMo
+# Human Motion Modeling
