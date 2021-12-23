@@ -62,12 +62,16 @@ class AMASSDataset(BaseDataset):
 
         # initialize data sample path
         self.samples = []
-        for dataset_name in self.sub_datasets:
-            with h5py.File(self.root, "r") as f:
-                motion_lists = list(f[dataset_name])
 
-            tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
-            self.samples.extend(tuple_list)
+        try:
+            for dataset_name in self.sub_datasets:
+                with h5py.File(self.root, "r") as f:
+                    motion_lists = list(f[dataset_name])
+
+                tuple_list = [(dataset_name, motion_lists[i]) for i in range(len(motion_lists))] 
+                self.samples.extend(tuple_list)
+        except:
+            print("Can't find AMASS_3D_joints.h5 dataset file, inference pose only")
 
         # precompute mean and variance for normalization
         mean_path = os.path.join(cfg.data_root, 'mean_pose_'+ str(self.return_type)

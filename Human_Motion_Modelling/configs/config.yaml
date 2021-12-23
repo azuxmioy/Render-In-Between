@@ -91,7 +91,7 @@ transformer:
 # Positional Encoding Setting
 pos_encode:
   hidden_dim: 128
-  position_embedding: 'v2'      # 'v2' sine function | 'network' return 2D joints | '3D' return 3D joints
+  position_embedding: 'v2'      # 'v2' sine function |  'v3' neural network embedding
 
 # Use Experimental motion discriminator during training
 use_dis: False

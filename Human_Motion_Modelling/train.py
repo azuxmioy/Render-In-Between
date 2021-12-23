@@ -133,8 +133,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run the training script')
 
     parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to the config file.')
-    parser.add_argument('--save-root', type=str, default='./checkpoints/', help="outputs path")
-    parser.add_argument('--name', type=str, default='train', help="output folder name")
+    parser.add_argument('--save-root', type=str, default='./checkpoints/', help="Output folder path")
+    parser.add_argument('--name', type=str, default='train', help="Session name")
     parser.add_argument('--resume', action="store_true")
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--workers', type=int, default=4)

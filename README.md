@@ -29,6 +29,7 @@ The neural rendering model learned to map the pose sequences back to the origina
 ## Quick Start
 
 ⬇️ example.zip [[MEGA](https://mega.nz/file/8dsFRKzA#Uw1AF-lOdmb5y9zYNj5EiIm-4CYx6nHh5nM3OeqHjZU)] (25.4MB)
+
 Download this example action clip which includes necessary input files for our pipeline.
 
 The first step is generating high FPS motion from low FPS poses with our motion modeling network.
@@ -39,6 +40,7 @@ python inference.py --pose-dir ../example/input_poses --save-dir ../example/ --u
 
 
 ⬇️ checkpoints.zip [[MEGA](https://mega.nz/file/tRsWHA4L#vZTA9Zc29EgAvajSfQb98lc2JDETy1gjPOFLWtll77Y)] (147.2MB)
+
 Next we will map high FPS poses back to video frames with our pose-guided neural rendering. Download the checkpoint files to the corresponding folder to run the model.
 ```
 cd Pose_Guided_Neural_Rendering

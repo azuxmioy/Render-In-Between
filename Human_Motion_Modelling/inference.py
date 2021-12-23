@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to the config file.')
     parser.add_argument('--save-dir', type=str, default='../example/test', help="outputs path")
     parser.add_argument('--pose-dir', type=str, help="input low FPS pose path")
-    parser.add_argument('--upsample-rate', type=int, default=8, help="input low FPS pose path")
+    parser.add_argument('--upsample-rate', type=int, default=8, help=" N-1 frames to insert between two frames")
 
     parser.add_argument('--seed', type=int, default=123)
 
