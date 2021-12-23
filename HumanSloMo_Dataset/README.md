@@ -43,7 +43,7 @@ To save time and memory usage for training and inference, we pre-process require
 
 ### Pose estimation
 
-You can use whatever pose detectors such as [openpose](https://github.com/CMU-Perceptual-Computing-Lab/openpose) or [AlphaPose](https://github.com/MVIG-SJTU/AlphaPose). The only thing need to be careful is the output json file format. We follow the [default openpose](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md#pose-output-format-body_25) format (2D BODY_25 keypoints+hand keypoints). In our paper and experiments, we modified the AlphaPose output format into the openpose style. You can download our modified version [here]() and please make sure you have installed some dependent packeges.
+You can use whatever pose detectors such as [openpose](https://github.com/CMU-Perceptual-Computing-Lab/openpose) or [AlphaPose](https://github.com/MVIG-SJTU/AlphaPose). The only thing need to be careful is the output json file format. We follow the [default openpose](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md#pose-output-format-body_25) format (2D BODY_25 keypoints+hand keypoints). In our paper and experiments, we modified the AlphaPose output format into the openpose style. You can download our modified version [here](https://mega.nz/file/0QVihJKb#vTqxBCnisHc_5pjD1LkvjFZ0xxynCnw5jMRTQUDwEoI) and please make sure you have installed some dependent packeges.
 
 ```bash
 pip install cython
